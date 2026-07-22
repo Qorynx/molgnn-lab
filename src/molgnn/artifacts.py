@@ -162,63 +162,58 @@ class RunPaths:
     def write_test_predictions(
         self,
         result: object,
-        *,
-        target_names: Sequence[str] | None = None,
-        seed: int,
-        checkpoint_epoch: int,
     ) -> Path:
         predictions = getattr(result, "predictions", None)
         targets = getattr(result, "targets", None)
         mask = getattr(result, "mask", None)
-        sample_ids = getattr(result, "sample_ids", None)
+        smiles = getattr(result, "smiles", None)
         if not (
             isinstance(predictions, torch.Tensor)
             and isinstance(targets, torch.Tensor)
             and isinstance(mask, torch.Tensor)
-            and isinstance(sample_ids, torch.Tensor)
+            and isinstance(smiles, tuple)
+            and all(isinstance(value, str) for value in smiles)
         ):
             raise ArtifactError(
-                "test prediction result must include prediction tensors, targets, "
-                "mask, and sample_ids"
+                "test prediction result must include predictions, targets, mask, and SMILES"
             )
         predictions = cast(torch.Tensor, predictions)
         targets = cast(torch.Tensor, targets)
         mask = cast(torch.Tensor, mask)
-        sample_ids = cast(torch.Tensor, sample_ids)
+        smiles = cast(tuple[str, ...], smiles)
         if predictions.shape != targets.shape or mask.shape != targets.shape:
             raise ArtifactError("test prediction tensors must have identical shapes")
-        if sample_ids.ndim != 1 or sample_ids.shape[0] != targets.shape[0]:
-            raise ArtifactError("sample_ids must have shape [N]")
-        names = _target_names(targets.shape[1], target_names)
+        if len(smiles) != targets.shape[0]:
+            raise ArtifactError("SMILES count must match the test sample count")
         rows: list[dict[str, object]] = []
         for sample_index in range(targets.shape[0]):
-            for target_index, name in enumerate(names):
-                observed = bool(mask[sample_index, target_index].item())
-                rows.append(
-                    {
-                        "sample_id": int(sample_ids[sample_index].item()),
-                        "target_name": name,
-                        "y_true": float(targets[sample_index, target_index].item())
-                        if observed
-                        else "",
-                        "y_pred": float(predictions[sample_index, target_index].item()),
-                        "mask": int(observed),
-                        "seed": seed,
-                        "checkpoint_epoch": checkpoint_epoch,
-                    }
-                )
-        _append_csv(
+            target_values = [
+                float(targets[sample_index, target_index].item())
+                if bool(mask[sample_index, target_index].item())
+                else None
+                for target_index in range(targets.shape[1])
+            ]
+            prediction_values = [
+                float(predictions[sample_index, target_index].item())
+                for target_index in range(predictions.shape[1])
+            ]
+            if targets.shape[1] == 1:
+                target_value: object = "" if target_values[0] is None else target_values[0]
+                prediction_value: object = prediction_values[0]
+            else:
+                target_value = json.dumps(target_values, separators=(",", ":"))
+                prediction_value = json.dumps(prediction_values, separators=(",", ":"))
+            rows.append(
+                {
+                    "smiles": smiles[sample_index],
+                    "target": target_value,
+                    "prediction": prediction_value,
+                }
+            )
+        _write_csv_atomic(
             self.test_predictions_csv,
             rows,
-            preferred_header=(
-                "sample_id",
-                "target_name",
-                "y_true",
-                "y_pred",
-                "mask",
-                "seed",
-                "checkpoint_epoch",
-            ),
+            preferred_header=("smiles", "target", "prediction"),
         )
         return self.test_predictions_csv
 
@@ -389,16 +384,15 @@ def _metrics_row(
     output: dict[str, object] = {"epoch": row.get("epoch", "")}
     output["learning_rate"] = "" if learning_rate is None else learning_rate
     output["epoch_seconds"] = "" if epoch_seconds is None else epoch_seconds
-    output.update({key: item for key, item in row.items() if key.startswith(("train_", "val_"))})
+    loss_keys = {"train_optimization_loss", "train_eval_loss", "train_loss", "val_loss"}
+    output.update(
+        {
+            key: item
+            for key, item in row.items()
+            if key.startswith(("train_", "val_")) and key not in loss_keys
+        }
+    )
     return output
-
-
-def _target_names(num_targets: int, names: Sequence[str] | None) -> tuple[str, ...]:
-    if names is None:
-        return tuple(f"task_{index}" for index in range(num_targets))
-    if isinstance(names, (str, bytes)) or len(names) != num_targets:
-        raise ArtifactError("target_names must contain one name per target")
-    return tuple(str(name) for name in names)
 
 
 def _to_builtin(value: object) -> object:

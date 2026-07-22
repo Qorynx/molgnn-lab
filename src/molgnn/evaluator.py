@@ -34,6 +34,7 @@ class EvaluationResult:
     targets: Tensor | None = None
     mask: Tensor | None = None
     sample_ids: Tensor | None = None
+    smiles: tuple[str, ...] | None = None
     logits: Tensor | None = None
     predicted_labels: Tensor | None = None
 
@@ -64,6 +65,7 @@ def evaluate(
     target_batches: list[Tensor] = []
     mask_batches: list[Tensor] = []
     sample_id_batches: list[Tensor] = []
+    smiles_values: list[str] = []
     loss_total = 0.0
     valid_target_count = 0
     sample_count = 0
@@ -84,6 +86,14 @@ def evaluate(
                     raise EvaluationError(f"batch {batch_index} is missing y/y_mask tensors")
                 if not isinstance(sample_ids, Tensor):
                     raise EvaluationError(f"batch {batch_index} is missing sample_id tensor")
+                if return_predictions:
+                    smiles_values.extend(
+                        _batch_smiles(
+                            getattr(device_batch, "smiles", None),
+                            expected_count=int(targets.shape[0]),
+                            batch_index=batch_index,
+                        )
+                    )
                 predictions = model(device_batch)
                 if not isinstance(predictions, Tensor):
                     raise EvaluationError(f"model output at batch {batch_index} must be a Tensor")
@@ -126,8 +136,11 @@ def evaluate(
         targets = None
         masks = None
         sample_ids = None
+        smiles = None
         raw = None
         predicted_labels = None
+    else:
+        smiles = tuple(smiles_values)
     return EvaluationResult(
         loss=loss,
         metrics=metrics,
@@ -137,6 +150,7 @@ def evaluate(
         targets=targets,
         mask=masks,
         sample_ids=sample_ids,
+        smiles=smiles,
         logits=raw,
         predicted_labels=predicted_labels,
     )
@@ -161,6 +175,22 @@ def _cat_or_empty(
     if values:
         return torch.cat(values, dim=0)
     return torch.empty(shape, dtype=dtype or torch.float32)
+
+
+def _batch_smiles(value: object, *, expected_count: int, batch_index: int) -> tuple[str, ...]:
+    if isinstance(value, str):
+        smiles = (value,)
+    elif isinstance(value, Sequence):
+        smiles = tuple(item for item in value if isinstance(item, str))
+        if len(smiles) != len(value):
+            raise EvaluationError(f"batch {batch_index} contains a non-string SMILES value")
+    else:
+        raise EvaluationError(f"batch {batch_index} is missing SMILES values")
+    if len(smiles) != expected_count:
+        raise EvaluationError(
+            f"batch {batch_index} SMILES count does not match its sample count"
+        )
+    return smiles
 
 
 __all__ = ["EvaluationError", "EvaluationResult", "evaluate", "evaluate_model"]

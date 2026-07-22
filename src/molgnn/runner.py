@@ -242,12 +242,7 @@ def _run_experiment(config: ResolvedConfig, seed: int) -> Path:
             checkpoint_epoch=fit_result.best_epoch + 1,
             sample_count=test_result.sample_count,
         )
-        paths.write_test_predictions(
-            test_result,
-            target_names=config.data.target_columns,
-            seed=config.experiment.seed,
-            checkpoint_epoch=fit_result.best_epoch + 1,
-        )
+        paths.write_test_predictions(test_result)
         paths.mark_completed()
         print(f"run: {paths.seed_dir}")
         return paths.seed_dir
@@ -313,7 +308,11 @@ def _aggregate_metrics(
     )
     metrics: dict[str, object] = {}
     for name in metric_names:
-        values = [float(str(row[name])) for row in completed if name in row]
+        values = [
+            float(str(row[name]))
+            for row in completed
+            if name in row and math.isfinite(float(str(row[name])))
+        ]
         mean = sum(values) / len(values)
         variance = sum((value - mean) ** 2 for value in values) / len(values)
         metrics[name] = {

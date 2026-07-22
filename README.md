@@ -109,3 +109,17 @@ train.
 Mỗi experiment lưu config đã resolve, split assignment và metric tổng hợp. Mỗi seed
 có thư mục riêng chứa checkpoint tốt nhất/gần nhất, lịch sử huấn luyện và dự đoán trên
 tập test. Có thể khai báo nhiều seed bằng `experiment.seeds`.
+
+Các artifact chính của mỗi seed:
+
+- `loss_history.csv`: optimization loss, train evaluation loss và validation loss theo
+  từng epoch.
+- `metrics_history.csv`: toàn bộ train/validation metrics theo epoch, learning rate và
+  thời gian chạy.
+- `test_history.csv`: test loss và toàn bộ test metrics của best checkpoint.
+- `test_predictions.csv`: đúng ba cột `smiles`, `target`, `prediction`; multitask dùng
+  JSON array theo thứ tự `data.target_columns`.
+
+Ở cấp experiment, `summary.csv` lưu kết quả test của từng seed và
+`aggregate_metrics.json` lưu mean/std/min/max cùng danh sách giá trị hữu hạn của từng
+metric qua các seed.

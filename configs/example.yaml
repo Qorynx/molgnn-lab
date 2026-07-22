@@ -34,5 +34,5 @@ training:
 task:
   type: regression
   loss: mse
-  metrics: [rmse, mae]
+  metrics: [rmse, mae, r2]
   target_scaling: true

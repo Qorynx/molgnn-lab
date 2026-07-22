@@ -137,7 +137,6 @@ _DEFAULT_CONFIG: dict[str, dict[str, object]] = {
     "task": {
         "type": "regression",
         "loss": "mse",
-        "metrics": ["rmse", "mae"],
         "target_scaling": True,
     },
 }
@@ -216,7 +215,15 @@ def _load_raw_with_defaults(path: Path) -> dict[str, Any]:
     else:
         merged = copy.deepcopy(_DEFAULT_CONFIG)
 
-    return _merge_raw(merged, raw)
+    resolved = _merge_raw(merged, raw)
+    task = resolved.get("task")
+    if isinstance(task, dict) and "metrics" not in task:
+        task["metrics"] = (
+            ["roc_auc", "prc_auc", "accuracy", "balanced_accuracy"]
+            if task.get("type") == "binary_classification"
+            else ["rmse", "mae", "r2"]
+        )
+    return resolved
 
 
 def _required_mapping(raw: Mapping[str, Any], section: str) -> dict[str, Any]:
