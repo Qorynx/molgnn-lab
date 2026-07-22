@@ -1,0 +1,74 @@
+# Private development material
+.agents/
+.codex/
+.python-version
+docs/
+papers/
+tests/
+uv.lock
+
+# Keep only the public example configuration
+configs/*
+!configs/example.yaml
+
+# Datasets and local data files
+data/
+datasets/
+*.csv
+*.tsv
+*.parquet
+*.sdf
+*.smi
+*.mol2
+
+# Experiment outputs, checkpoints, and logs
+runs/
+outputs/
+checkpoints/
+wandb/
+lightning_logs/
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.log
+events.out.tfevents.*
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test, lint, type-check, and coverage caches
+.pytest_cache/
+.ruff_cache/
+.basedpyright/
+.pyright/
+.mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+tmp/
+
+# Build and packaging artifacts
+build/
+dist/
+*.egg-info/
+
+# IDE, notebook, and operating-system files
+.idea/
+.vscode/
+.ipynb_checkpoints/
+.DS_Store
+Thumbs.db
+
+# Local environment files
+.env
+.env.*
+!.env.example

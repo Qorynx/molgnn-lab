@@ -1,0 +1,38 @@
+experiment:
+  name: example_gcn_regression
+  seed: 42
+  output_dir: ../runs
+
+data:
+  path: ../data/dataset.csv
+  smiles_column: smiles
+  target_columns: [target]
+  id_column: null
+  split: random
+  split_ratios: [0.8, 0.1, 0.1]
+  split_column: null
+  invalid_smiles: error
+
+model:
+  name: gcn_baseline
+  parameters:
+    hidden_dim: 64
+    num_layers: 3
+    dropout: 0.1
+
+training:
+  epochs: 20
+  batch_size: 32
+  learning_rate: 0.001
+  weight_decay: 0.000001
+  patience: 5
+  monitor: val_rmse
+  monitor_mode: min
+  device: auto
+  num_workers: 0
+
+task:
+  type: regression
+  loss: mse
+  metrics: [rmse, mae]
+  target_scaling: true

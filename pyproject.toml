@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "molgnn-lab"
+version = "0.1.0"
+description = "Architecture-only benchmark framework for 2D molecular graph neural networks"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "astartes[molecules]>=1.3,<2",
+    "numpy>=2,<3",
+    "pandas>=2.2,<4",
+    "pyyaml>=6,<7",
+    "rdkit>=2026.3,<2027",
+    "scikit-learn>=1.6,<2",
+    "torch>=2.9,<2.13",
+    "torch-geometric>=2.7,<3",
+]
+
+[project.scripts]
+molgnn = "molgnn.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/molgnn"]
