@@ -39,6 +39,11 @@ python -m pip install -r requirements.txt
 molgnn --version
 ```
 
+Framework không khóa một CUDA toolkit cụ thể. Nếu cần bản PyTorch dành riêng cho CPU
+hoặc một phiên bản CUDA nhất định, hãy cài bản PyTorch phù hợp vào environment trước,
+sau đó chạy lệnh cài đặt trên; `pip` sẽ giữ lại bản đã cài nếu thỏa khoảng phiên bản
+khai báo trong `pyproject.toml`.
+
 ## Chuẩn bị dữ liệu
 
 Dataset không được phân phối kèm repository. Người dùng cung cấp file CSV riêng với

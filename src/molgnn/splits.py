@@ -62,7 +62,7 @@ def scaffold_split(
     effective_seed = 0 if seed is None else _validate_seed(seed)
     train_ratio, validation_ratio, test_ratio = (float(value) for value in ratio_values)
 
-    from astartes.molecules import train_val_test_split_molecules
+    from astartes import train_val_test_split
     from rdkit import Chem
 
     molecules: list[object] = []
@@ -76,7 +76,7 @@ def scaffold_split(
         molecules.append(molecule)
 
     try:
-        result = train_val_test_split_molecules(
+        result = train_val_test_split(
             np.asarray(molecules, dtype=object),
             sampler="scaffold",
             train_size=train_ratio,
