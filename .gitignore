@@ -2,7 +2,8 @@
 .agents/
 .codex/
 .python-version
-docs/
+docs/*
+!docs/dataset-driven-benchmark-refactor-plan.md
 papers/
 tests/
 uv.lock

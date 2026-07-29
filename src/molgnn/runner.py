@@ -1,69 +1,282 @@
-"""Single shared experiment lifecycle for every registered architecture."""
+"""Shared single-model and dataset-driven benchmark orchestration."""
 
 from __future__ import annotations
 
 import csv
+import gc
 import hashlib
 import math
 import random
 import time
-from dataclasses import replace
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import torch
+from torch import Tensor
+from torch_geometric.loader import DataLoader as PyGDataLoader
 
 from .artifacts import RunPaths
 from .checkpointing import restore_model, save_checkpoint_atomic
-from .config import ResolvedConfig, to_serializable_dict
-from .dataset import CsvMoleculeDataset, build_dataloaders
+from .config import (
+    ModelConfig,
+    ResolvedConfig,
+    TrainingConfig,
+    resolve_training_config,
+    to_serializable_dict,
+)
+from .dataset import (
+    CsvMoleculeDataset,
+    PreparedDataset,
+    build_dataloaders,
+    prepare_model_samples,
+)
 from .evaluator import evaluate
 from .models.registration import register_builtin_models
 from .registry import (
     BuildContext,
+    ModelSpec,
     build_model,
     get_model_spec,
+    resolve_benchmark_models,
+    resolve_model_parameters,
     validate_required_batch_fields,
 )
-from .splits import make_split, split_rows
+from .splits import SplitIndices, make_split, split_rows
 from .tasks import TargetScalerState, build_task_adapter, fit_target_scaler
 from .trainer import EpochRecord, fit, resolve_device
-from .transforms import get_graph_transform, register_builtin_transforms
+from .transforms import GraphTransform, get_graph_transform, register_builtin_transforms
 
 
 class RunnerError(RuntimeError):
     """Raised for orchestration failures after lifecycle artifacts are created."""
 
 
+@dataclass(frozen=True)
+class ResolvedModelRun:
+    """Effective model and training configuration for one seed run."""
+
+    model_name: str
+    parameters: Mapping[str, object]
+    training: TrainingConfig
+    seed: int
+
+
+@dataclass(frozen=True)
+class RunFailure:
+    """One isolated model-seed failure returned by benchmark orchestration."""
+
+    model_name: str
+    seed: int
+    stage: str
+    error_type: str
+    error_message: str
+
+
+@dataclass(frozen=True)
+class BenchmarkResult:
+    """Phase-2 benchmark outcome; root summaries are added in Phase 3."""
+
+    completed: tuple[Path, ...]
+    failed: tuple[RunFailure, ...]
+    summary_path: Path | None = None
+    leaderboard_path: Path | None = None
+
+
+@dataclass(frozen=True)
+class _SharedBenchmarkData:
+    dataset: CsvMoleculeDataset
+    splits: SplitIndices
+    scaler: TargetScalerState | None
+    context: BuildContext
+    metadata: Mapping[str, object]
+    split_records: tuple[Mapping[str, object], ...]
+
+
+@dataclass(frozen=True)
+class _ResolvedModelPlan:
+    spec: ModelSpec
+    parameters: Mapping[str, object]
+    training: TrainingConfig
+    graph_transform: GraphTransform | None
+
+
+def run_benchmark(config: ResolvedConfig) -> BenchmarkResult:
+    """Run selected models in model-outer, seed-inner order.
+
+    Dataset loading, split creation, and target-scaler fitting happen once.
+    Model-specific transformed samples are prepared once and reused by every
+    seed for that model. Failures are returned instead of aborting later models.
+    """
+    register_builtin_models()
+    register_builtin_transforms()
+    specs = resolve_benchmark_models(config.models)
+    _validate_selected_overrides(config, specs)
+    shared = _prepare_shared_data(config)
+
+    plans: list[_ResolvedModelPlan] = []
+    failures: list[RunFailure] = []
+    for spec in specs:
+        try:
+            plan = _resolve_model_plan(config, spec, shared.context)
+            _preflight_model(plan, shared)
+        except Exception as exc:
+            failures.extend(
+                _failures_for_model(
+                    spec.name, config.experiment.seeds, "preflight", exc
+                )
+            )
+            continue
+        plans.append(plan)
+
+    completed: list[Path] = []
+    benchmark_root = config.experiment.output_dir / config.experiment.name
+    for plan in plans:
+        prepared: PreparedDataset | None = None
+        try:
+            prepared = prepare_model_samples(
+                shared.dataset,
+                plan.graph_transform,
+            )
+        except Exception as exc:
+            failures.extend(
+                _failures_for_model(
+                    plan.spec.name,
+                    config.experiment.seeds,
+                    "prepare",
+                    exc,
+                )
+            )
+            _cleanup_resources(plan.training.device)
+            continue
+
+        try:
+            for seed in config.experiment.seeds:
+                resolved_run = ResolvedModelRun(
+                    model_name=plan.spec.name,
+                    parameters=plan.parameters,
+                    training=plan.training,
+                    seed=seed,
+                )
+                effective_config = _effective_model_config(
+                    config,
+                    resolved_run,
+                    output_dir=benchmark_root,
+                    experiment_name=plan.spec.name,
+                )
+                try:
+                    paths = RunPaths.create(benchmark_root, plan.spec.name, seed)
+                    run_dir = _run_model_seed(
+                        effective_config,
+                        plan.spec,
+                        resolved_run,
+                        prepared,
+                        shared,
+                        paths,
+                    )
+                except Exception as exc:
+                    failures.append(_run_failure(plan.spec.name, seed, "run", exc))
+                else:
+                    completed.append(run_dir)
+                finally:
+                    _cleanup_resources(plan.training.device)
+        finally:
+            del prepared
+            _cleanup_resources(plan.training.device)
+
+    return BenchmarkResult(completed=tuple(completed), failed=tuple(failures))
+
+
 def run_experiment(config: ResolvedConfig) -> Path:
-    """Run the first configured seed and return its artifact directory."""
-    return _run_experiment(config, config.experiment.seed)
+    """Compatibility wrapper running the first configured model and seed."""
+    completed = _run_legacy_experiments(
+        config,
+        (config.experiment.seed,),
+        write_summary=False,
+    )
+    return completed[0]
 
 
 def run_experiments(config: ResolvedConfig) -> tuple[Path, ...]:
-    """Run all configured seeds sequentially and return their artifact directories."""
+    """Compatibility wrapper retaining the current single-model artifact layout."""
+    return _run_legacy_experiments(
+        config,
+        config.experiment.seeds,
+        write_summary=True,
+    )
+
+
+def _run_legacy_experiments(
+    config: ResolvedConfig,
+    seeds: Sequence[int],
+    *,
+    write_summary: bool,
+) -> tuple[Path, ...]:
+    register_builtin_models()
+    register_builtin_transforms()
+    shared = _prepare_shared_data(config)
+    spec = get_model_spec(config.model.name)
+    plan = _resolve_model_plan(
+        config,
+        spec,
+        shared.context,
+        compatibility_parameters=config.model.parameters,
+    )
+    _preflight_model(plan, shared)
+    prepared = prepare_model_samples(shared.dataset, plan.graph_transform)
     completed: list[Path] = []
     summary_rows: list[dict[str, object]] = []
-    failed: list[dict[str, object]] = []
-    for seed in config.experiment.seeds:
-        try:
-            run_dir = _run_experiment(config, seed)
-        except Exception as exc:
-            failed.append(
-                {
+    failed_rows: list[dict[str, object]] = []
+
+    try:
+        for seed in seeds:
+            resolved_run = ResolvedModelRun(
+                model_name=spec.name,
+                parameters=plan.parameters,
+                training=plan.training,
+                seed=seed,
+            )
+            effective_config = _effective_model_config(
+                config,
+                resolved_run,
+                output_dir=config.experiment.output_dir,
+                experiment_name=config.experiment.name,
+            )
+            try:
+                paths = RunPaths.create(
+                    config.experiment.output_dir,
+                    config.experiment.name,
+                    seed,
+                )
+                run_dir = _run_model_seed(
+                    effective_config,
+                    spec,
+                    resolved_run,
+                    prepared,
+                    shared,
+                    paths,
+                )
+            except Exception as exc:
+                failed_row: dict[str, object] = {
                     "seed": seed,
                     "status": "failed",
                     "error_type": type(exc).__name__,
                     "error_message": str(exc)[:500],
                 }
-            )
-            summary_rows.append(failed[-1])
-            continue
-        completed.append(run_dir)
-        summary_rows.append(_summary_row(run_dir, seed))
+                failed_rows.append(failed_row)
+                summary_rows.append(failed_row)
+            else:
+                completed.append(run_dir)
+                summary_rows.append(_summary_row(run_dir, seed))
+            finally:
+                _cleanup_resources(plan.training.device)
+    finally:
+        del prepared
+        _cleanup_resources(plan.training.device)
 
-    if completed or failed:
+    if write_summary and summary_rows:
         root_paths = RunPaths.create(
             config.experiment.output_dir,
             config.experiment.name,
@@ -72,96 +285,194 @@ def run_experiments(config: ResolvedConfig) -> tuple[Path, ...]:
         )
         root_paths.write_summary(summary_rows)
         root_paths.write_aggregate_metrics(
-            _aggregate_metrics(config.experiment.seeds, summary_rows, failed)
+            _aggregate_metrics(tuple(seeds), summary_rows, failed_rows)
         )
-    if failed:
-        seeds = ", ".join(str(item["seed"]) for item in failed)
-        raise RunnerError(f"one or more seeds failed: {seeds}")
+    if failed_rows:
+        failed_seeds = ", ".join(str(item["seed"]) for item in failed_rows)
+        raise RunnerError(f"one or more seeds failed: {failed_seeds}")
     return tuple(completed)
 
 
-def _run_experiment(config: ResolvedConfig, seed: int) -> Path:
-    """Run one configured seed and return its artifact directory."""
-    config = replace(config, experiment=replace(config.experiment, seed=seed))
-    paths: RunPaths | None = None
-    try:
-        paths = RunPaths.create(
-            config.experiment.output_dir,
-            config.experiment.name,
-            config.experiment.seed,
-        )
-        paths.mark_running()
-        _seed_everything(config.experiment.seed)
+def _prepare_shared_data(config: ResolvedConfig) -> _SharedBenchmarkData:
+    dataset = CsvMoleculeDataset(
+        config.data.path,
+        smiles_column=config.data.smiles_column,
+        target_columns=config.data.target_columns,
+        task_type=config.task.type,
+        invalid_smiles=config.data.invalid_smiles,
+        id_column=config.data.id_column,
+        split_column=config.data.split_column,
+    )
+    print(
+        f"dataset: valid={dataset.summary.valid_rows} "
+        f"skipped={dataset.summary.skipped_invalid_smiles}"
+    )
+    split_seed = config.experiment.seeds[0]
+    splits = make_split(dataset, config.data, split_seed)
+    print(
+        f"split: train={len(splits.train)} validation={len(splits.validation)} "
+        f"test={len(splits.test)}"
+    )
+    scaler: TargetScalerState | None = None
+    if config.task.type == "regression" and config.task.target_scaling:
+        scaler = fit_target_scaler(dataset, splits.train)
+    schema = dataset.feature_schema
+    context = BuildContext(
+        atom_dim=schema.atom_dim,
+        bond_dim=schema.bond_dim,
+        num_targets=config.num_targets,
+        feature_schema_version=schema.version,
+    )
+    metadata: dict[str, object] = {
+        "dataset_fingerprint": _dataset_fingerprint(dataset.path),
+        "feature_schema_version": schema.version,
+        "dataset_summary": {
+            "source_rows": dataset.summary.source_rows,
+            "valid_rows": dataset.summary.valid_rows,
+            "skipped_invalid_smiles": dataset.summary.skipped_invalid_smiles,
+        },
+    }
+    records = tuple(dict(row) for row in split_rows(splits, dataset))
+    return _SharedBenchmarkData(
+        dataset=dataset,
+        splits=splits,
+        scaler=scaler,
+        context=context,
+        metadata=metadata,
+        split_records=records,
+    )
 
-        dataset = CsvMoleculeDataset(
-            config.data.path,
-            smiles_column=config.data.smiles_column,
-            target_columns=config.data.target_columns,
-            task_type=config.task.type,
-            invalid_smiles=config.data.invalid_smiles,
-            id_column=config.data.id_column,
-            split_column=config.data.split_column,
-        )
-        print(
-            f"dataset: valid={dataset.summary.valid_rows} "
-            f"skipped={dataset.summary.skipped_invalid_smiles}"
-        )
-        schema = dataset.feature_schema
-        metadata = {
-            "dataset_fingerprint": _dataset_fingerprint(dataset.path),
-            "feature_schema_version": schema.version,
-            "dataset_summary": {
-                "source_rows": dataset.summary.source_rows,
-                "valid_rows": dataset.summary.valid_rows,
-                "skipped_invalid_smiles": dataset.summary.skipped_invalid_smiles,
-            },
-        }
+
+def _resolve_model_plan(
+    config: ResolvedConfig,
+    spec: ModelSpec,
+    context: BuildContext,
+    *,
+    compatibility_parameters: Mapping[str, object] | None = None,
+) -> _ResolvedModelPlan:
+    override = config.model_overrides.get(spec.name)
+    parameters = dict(compatibility_parameters or {})
+    training_overrides: Mapping[str, object] = {}
+    if override is not None:
+        parameters.update(override.parameters)
+        training_overrides = override.training
+    resolved_parameters = resolve_model_parameters(spec, parameters, context)
+    training = resolve_training_config(config.training, training_overrides, config.task)
+    return _ResolvedModelPlan(
+        spec=spec,
+        parameters=resolved_parameters,
+        training=training,
+        graph_transform=get_graph_transform(spec.graph_transform_name),
+    )
+
+
+def _preflight_model(
+    plan: _ResolvedModelPlan,
+    shared: _SharedBenchmarkData,
+) -> None:
+    try:
+        representative_count = min(plan.training.batch_size, len(shared.splits.train))
+        indices = shared.splits.train[:representative_count]
+        samples = []
+        for index in indices:
+            sample = shared.dataset[index]
+            samples.append(
+                sample if plan.graph_transform is None else plan.graph_transform(sample)
+            )
+        batch = next(iter(PyGDataLoader(samples, batch_size=representative_count)))
+        validate_required_batch_fields(batch, plan.spec)
+        model = build_model(plan.spec.name, plan.parameters, shared.context)
+        model.eval()
+        with torch.inference_mode():
+            predictions = model(batch)
+        targets = getattr(batch, "y", None)
+        if not isinstance(predictions, Tensor) or not isinstance(targets, Tensor):
+            raise RunnerError(
+                f"model '{plan.spec.name}' preflight must produce a Tensor "
+                "and receive batch.y"
+            )
+        expected_shape = (targets.shape[0], shared.context.num_targets)
+        if tuple(predictions.shape) != expected_shape:
+            raise RunnerError(
+                f"model '{plan.spec.name}' output shape {tuple(predictions.shape)} "
+                f"does not match {expected_shape}"
+            )
+    finally:
+        _cleanup_resources("cpu")
+
+
+def _effective_model_config(
+    config: ResolvedConfig,
+    resolved_run: ResolvedModelRun,
+    *,
+    output_dir: Path,
+    experiment_name: str,
+) -> ResolvedConfig:
+    return replace(
+        config,
+        experiment=replace(
+            config.experiment,
+            name=experiment_name,
+            seed=resolved_run.seed,
+            output_dir=output_dir,
+        ),
+        model=ModelConfig(
+            name=resolved_run.model_name,
+            parameters=resolved_run.parameters,
+        ),
+        training=resolved_run.training,
+    )
+
+
+def _run_model_seed(
+    config: ResolvedConfig,
+    model_spec: ModelSpec,
+    resolved_run: ResolvedModelRun,
+    prepared: PreparedDataset,
+    shared: _SharedBenchmarkData,
+    paths: RunPaths,
+) -> Path:
+    """Run one preflighted model seed against shared prepared data."""
+    try:
+        paths.mark_running()
+        _seed_everything(resolved_run.seed)
         serializable_config = to_serializable_dict(config)
-        serializable_config.update(metadata)
+        serializable_config.update(shared.metadata)
         root_config = to_serializable_dict(
-            replace(config, experiment=replace(config.experiment, seed=config.experiment.seeds[0]))
+            replace(
+                config,
+                experiment=replace(
+                    config.experiment,
+                    seed=config.experiment.seeds[0],
+                ),
+            )
         )
-        root_config.update(metadata)
+        root_config.update(shared.metadata)
         paths.write_experiment_config(root_config)
         paths.write_config(serializable_config)
-        split_seed = config.experiment.seeds[0]
-        splits = make_split(dataset, config.data, split_seed)
-        paths.write_split_rows(split_rows(splits, dataset))
-        print(
-            f"split: train={len(splits.train)} validation={len(splits.validation)} "
-            f"test={len(splits.test)}"
-        )
+        paths.write_split_rows(shared.split_records)
 
-        scaler: TargetScalerState | None = None
-        if config.task.type == "regression" and config.task.target_scaling:
-            scaler = fit_target_scaler(dataset, splits.train)
-        register_builtin_models()
-        register_builtin_transforms()
-        model_spec = get_model_spec(config.model.name)
-        graph_transform = get_graph_transform(model_spec.graph_transform_name)
         loaders = build_dataloaders(
-            dataset,
-            splits,
-            config.training.batch_size,
-            config.experiment.seed,
-            config.training.num_workers,
-            graph_transform,
+            prepared,
+            shared.splits,
+            resolved_run.training.batch_size,
+            resolved_run.seed,
+            resolved_run.training.num_workers,
         )
         validate_required_batch_fields(next(iter(loaders.train_eval)), model_spec)
-        context = BuildContext(
-            atom_dim=schema.atom_dim,
-            bond_dim=schema.bond_dim,
-            num_targets=config.num_targets,
-            feature_schema_version=schema.version,
+        model = build_model(
+            resolved_run.model_name,
+            resolved_run.parameters,
+            shared.context,
         )
-        model = build_model(config.model.name, config.model.parameters, context)
-        adapter = build_task_adapter(config.task, scaler)
+        adapter = build_task_adapter(config.task, shared.scaler)
         optimizer = torch.optim.AdamW(
             model.parameters(),
-            lr=config.training.learning_rate,
-            weight_decay=config.training.weight_decay,
+            lr=resolved_run.training.learning_rate,
+            weight_decay=resolved_run.training.weight_decay,
         )
-        resolved_device = resolve_device(config.training.device)
+        resolved_device = resolve_device(resolved_run.training.device)
+        print(f"model: {resolved_run.model_name} seed: {resolved_run.seed}")
         print(f"device: {resolved_device}")
         started = time.perf_counter()
 
@@ -169,7 +480,7 @@ def _run_experiment(config: ResolvedConfig, seed: int) -> Path:
             paths.append_loss_history(record)
             paths.append_metrics_history(
                 record,
-                learning_rate=config.training.learning_rate,
+                learning_rate=resolved_run.training.learning_rate,
                 epoch_seconds=time.perf_counter() - started,
             )
             print(
@@ -183,46 +494,56 @@ def _run_experiment(config: ResolvedConfig, seed: int) -> Path:
             loaders,
             optimizer,
             adapter,
-            epochs=config.training.epochs,
-            patience=config.training.patience,
-            monitor=config.training.monitor,
-            monitor_mode=config.training.monitor_mode,
+            epochs=resolved_run.training.epochs,
+            patience=resolved_run.training.patience,
+            monitor=resolved_run.training.monitor,
+            monitor_mode=resolved_run.training.monitor_mode,
             device=resolved_device,
             target_names=config.data.target_columns,
             callbacks=(on_epoch,),
         )
-        print(f"best epoch: {fit_result.best_epoch + 1} monitor={fit_result.best_value:.6g}")
+        print(
+            f"best epoch: {fit_result.best_epoch + 1} "
+            f"monitor={fit_result.best_value:.6g}"
+        )
+        schema_version = shared.context.feature_schema_version
         save_checkpoint_atomic(
             paths.best_checkpoint,
             epoch=fit_result.best_epoch,
-            monitor_name=config.training.monitor,
+            monitor_name=resolved_run.training.monitor,
             monitor_value=fit_result.best_value,
             model_state_dict=fit_result.best_state_dict,
             optimizer_state_dict=optimizer.state_dict(),
             resolved_config=serializable_config,
-            feature_schema_version=schema.version,
-            target_scaler_state=None if scaler is None else scaler.to_dict(),
+            feature_schema_version=schema_version,
+            target_scaler_state=(
+                None if shared.scaler is None else shared.scaler.to_dict()
+            ),
         )
         last_record = fit_result.history[-1]
         last_monitor = (
-            last_record.monitor if math.isfinite(last_record.monitor) else fit_result.best_value
+            last_record.monitor
+            if math.isfinite(last_record.monitor)
+            else fit_result.best_value
         )
         save_checkpoint_atomic(
             paths.last_checkpoint,
             epoch=last_record.epoch,
-            monitor_name=config.training.monitor,
+            monitor_name=resolved_run.training.monitor,
             monitor_value=last_monitor,
             model_state_dict=model.state_dict(),
             optimizer_state_dict=optimizer.state_dict(),
             resolved_config=serializable_config,
-            feature_schema_version=schema.version,
-            target_scaler_state=None if scaler is None else scaler.to_dict(),
+            feature_schema_version=schema_version,
+            target_scaler_state=(
+                None if shared.scaler is None else shared.scaler.to_dict()
+            ),
             rng_state=_rng_state(),
         )
         restore_model(
             model,
             paths.best_checkpoint,
-            expected_feature_schema_version=schema.version,
+            expected_feature_schema_version=schema_version,
         )
         test_result = evaluate(
             model,
@@ -247,9 +568,49 @@ def _run_experiment(config: ResolvedConfig, seed: int) -> Path:
         print(f"run: {paths.seed_dir}")
         return paths.seed_dir
     except Exception as exc:
-        if paths is not None:
-            paths.mark_failed(exc)
+        paths.mark_failed(exc)
         raise
+
+
+def _validate_selected_overrides(
+    config: ResolvedConfig,
+    specs: Sequence[ModelSpec],
+) -> None:
+    selected = {spec.name for spec in specs}
+    inactive = sorted(set(config.model_overrides) - selected)
+    if inactive:
+        names = ", ".join(inactive)
+        raise RunnerError(f"model override(s) do not match selected models: {names}")
+
+
+def _failures_for_model(
+    model_name: str,
+    seeds: Sequence[int],
+    stage: str,
+    error: Exception,
+) -> tuple[RunFailure, ...]:
+    return tuple(_run_failure(model_name, seed, stage, error) for seed in seeds)
+
+
+def _run_failure(
+    model_name: str,
+    seed: int,
+    stage: str,
+    error: Exception,
+) -> RunFailure:
+    return RunFailure(
+        model_name=model_name,
+        seed=seed,
+        stage=stage,
+        error_type=type(error).__name__,
+        error_message=str(error)[:500],
+    )
+
+
+def _cleanup_resources(device: str) -> None:
+    gc.collect()
+    if torch.cuda.is_available() and device in {"cuda", "auto"}:
+        torch.cuda.empty_cache()
 
 
 def _dataset_fingerprint(path: Path) -> str:
@@ -267,7 +628,9 @@ def _rng_state() -> dict[str, object]:
         "python": python_state,
         "numpy": numpy_state,
         "torch": torch.get_rng_state(),
-        "torch_cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+        "torch_cuda": (
+            torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+        ),
     }
 
 
@@ -339,4 +702,12 @@ def _seed_everything(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-__all__ = ["RunnerError", "run_experiment", "run_experiments"]
+__all__ = [
+    "BenchmarkResult",
+    "ResolvedModelRun",
+    "RunFailure",
+    "RunnerError",
+    "run_benchmark",
+    "run_experiment",
+    "run_experiments",
+]

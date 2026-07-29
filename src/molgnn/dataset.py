@@ -7,7 +7,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Protocol, overload
+from typing import TYPE_CHECKING, Literal, Protocol, cast, overload
 
 import pandas as pd
 import torch
@@ -54,6 +54,27 @@ class DataLoaders:
     train_eval: PyGDataLoader
     validation: PyGDataLoader
     test: PyGDataLoader
+
+
+@dataclass(frozen=True)
+class PreparedDataset:
+    """Immutable sample view prepared once for one model architecture."""
+
+    samples: tuple[MolecularData, ...]
+
+    @overload
+    def __getitem__(self, index: int) -> MolecularData: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[MolecularData, ...]: ...
+
+    def __getitem__(
+        self, index: int | slice
+    ) -> MolecularData | tuple[MolecularData, ...]:
+        return self.samples[index]
+
+    def __len__(self) -> int:
+        return len(self.samples)
 
 
 class MolecularDataset(Protocol):
@@ -142,12 +163,16 @@ class CsvMoleculeDataset(Dataset[MolecularData]):
                 split_labels.append(None)
             else:
                 raw_split = row[self.split_column]
-                split_labels.append(None if _is_missing(raw_split) else str(raw_split).strip())
+                split_labels.append(
+                    None if _is_missing(raw_split) else str(raw_split).strip()
+                )
 
         self._samples = samples
         self._sample_ids = tuple(sample_ids)
         self._smiles = tuple(smiles_values)
-        self._split_labels = tuple(split_labels) if self.split_column is not None else None
+        self._split_labels = (
+            tuple(split_labels) if self.split_column is not None else None
+        )
         self.summary = DatasetSummary(
             source_rows=len(dataframe),
             valid_rows=len(samples),
@@ -199,37 +224,62 @@ class CsvMoleculeDataset(Dataset[MolecularData]):
         return self._split_labels
 
 
-def build_dataloaders(
+def prepare_model_samples(
     dataset: MolecularDataset,
+    graph_transform: GraphTransform | None = None,
+) -> PreparedDataset:
+    """Materialize one reusable canonical or model-transformed sample view."""
+    canonical_samples = tuple(dataset[index] for index in range(len(dataset)))
+    if graph_transform is None:
+        return PreparedDataset(canonical_samples)
+    return PreparedDataset(
+        tuple(graph_transform(sample) for sample in canonical_samples)
+    )
+
+
+def build_dataloaders(
+    prepared: MolecularDataset,
     splits: SplitIndices,
     batch_size: int,
     seed: int,
     num_workers: int = 0,
     graph_transform: GraphTransform | None = None,
 ) -> DataLoaders:
-    """Build deterministic train/eval PyG loaders over one split assignment."""
+    """Build seeded loaders from a reusable prepared sample view.
+
+    Passing a canonical dataset plus ``graph_transform`` remains supported as a
+    temporary compatibility bridge. New orchestration code should call
+    :func:`prepare_model_samples` once, then reuse the returned view per seed.
+    """
     from .splits import validate_split_indices
 
-    validate_split_indices(splits, len(dataset))
-    if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1:
+    validate_split_indices(splits, len(prepared))
+    if (
+        isinstance(batch_size, bool)
+        or not isinstance(batch_size, int)
+        or batch_size < 1
+    ):
         raise DatasetError("batch_size must be a positive integer")
     if isinstance(seed, bool) or not isinstance(seed, int):
         raise DatasetError("seed must be an integer")
-    if isinstance(num_workers, bool) or not isinstance(num_workers, int) or num_workers < 0:
+    if (
+        isinstance(num_workers, bool)
+        or not isinstance(num_workers, int)
+        or num_workers < 0
+    ):
         raise DatasetError("num_workers must be a non-negative integer")
 
     train_generator = torch.Generator()
     train_generator.manual_seed(seed)
 
-    canonical_samples = [dataset[index] for index in range(len(dataset))]
-    transformed_samples = (
-        canonical_samples
-        if graph_transform is None
-        else [graph_transform(sample) for sample in canonical_samples]
+    prepared_view = (
+        prepared
+        if isinstance(prepared, PreparedDataset) and graph_transform is None
+        else prepare_model_samples(prepared, graph_transform)
     )
 
     def samples(indices: tuple[int, ...]) -> list[MolecularData]:
-        return [transformed_samples[index] for index in indices]
+        return [prepared_view[index] for index in indices]
 
     train_samples = samples(splits.train)
     return DataLoaders(
@@ -283,7 +333,9 @@ def _normalise_target_columns(value: Sequence[str]) -> tuple[str, ...]:
     try:
         result = tuple(_require_column_name(item, "target_columns") for item in value)
     except TypeError as exc:
-        raise DatasetError("target_columns must be a non-empty sequence of strings") from exc
+        raise DatasetError(
+            "target_columns must be a non-empty sequence of strings"
+        ) from exc
     if not result:
         raise DatasetError("target_columns must not be empty")
     if len(set(result)) != len(result):
@@ -294,13 +346,13 @@ def _normalise_target_columns(value: Sequence[str]) -> tuple[str, ...]:
 def _validate_task_type(value: str) -> TaskType:
     if value not in {"regression", "binary_classification"}:
         raise DatasetError("task_type must be regression or binary_classification")
-    return value  # type: ignore[return-value]
+    return cast(TaskType, value)
 
 
 def _validate_invalid_smiles_policy(value: str) -> InvalidSmilesPolicy:
     if value not in {"error", "skip"}:
         raise DatasetError("invalid_smiles must be error or skip")
-    return value  # type: ignore[return-value]
+    return cast(InvalidSmilesPolicy, value)
 
 
 def _read_and_validate_csv(
@@ -317,7 +369,12 @@ def _read_and_validate_csv(
         raise DatasetError(f"CSV dataset path is not a file: '{path}'")
     try:
         dataframe = pd.read_csv(path)
-    except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError) as exc:
+    except (
+        OSError,
+        pd.errors.EmptyDataError,
+        pd.errors.ParserError,
+        UnicodeDecodeError,
+    ) as exc:
         raise DatasetError(f"Cannot read CSV dataset '{path}': {exc}") from exc
 
     required = {smiles_column, *target_columns}
@@ -359,7 +416,9 @@ def _parse_targets(
     target_mask: list[bool] = []
     for column in target_columns:
         raw_value = row[column]
-        if _is_missing(raw_value) or (isinstance(raw_value, str) and not raw_value.strip()):
+        if _is_missing(raw_value) or (
+            isinstance(raw_value, str) and not raw_value.strip()
+        ):
             targets.append(0.0)
             target_mask.append(False)
             continue
@@ -391,5 +450,7 @@ __all__ = [
     "DatasetError",
     "DatasetSummary",
     "MolecularDataset",
+    "PreparedDataset",
     "build_dataloaders",
+    "prepare_model_samples",
 ]

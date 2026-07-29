@@ -19,12 +19,14 @@ def register_builtin_models() -> None:
             "gcn_baseline",
             required_batch_fields=GCNBaseline.required_batch_fields,
             prediction_reducer_name="identity",
+            benchmark_order=10,
         )(GCNBaseline)
     if "attentivefp" not in available_models():
         register_model(
             "attentivefp",
             required_batch_fields=AttentiveFP.required_batch_fields,
             prediction_reducer_name="identity",
+            benchmark_order=20,
         )(AttentiveFP)
     if "dmpnn" not in available_models():
         register_model(
@@ -32,6 +34,7 @@ def register_builtin_models() -> None:
             required_batch_fields=DMPNN.required_batch_fields,
             graph_transform_name="directed_edges",
             prediction_reducer_name="identity",
+            benchmark_order=30,
         )(DMPNN)
     if "molecular_graph_embedding" not in available_models():
         register_model(
@@ -39,6 +42,7 @@ def register_builtin_models() -> None:
             required_batch_fields=MolecularGraphEmbedding.required_batch_fields,
             graph_transform_name="coley_2017_features",
             prediction_reducer_name="identity",
+            benchmark_order=50,
         )(MolecularGraphEmbedding)
     if "hignn" not in available_models():
         register_model(
@@ -46,12 +50,14 @@ def register_builtin_models() -> None:
             required_batch_fields=HiGNN.required_batch_fields,
             graph_transform_name="brics_fragments",
             prediction_reducer_name="identity",
+            benchmark_order=40,
         )(HiGNN)
     if "trimnet_2020" not in available_models():
         register_model(
             "trimnet_2020",
             required_batch_fields=TrimNet2020.required_batch_fields,
             prediction_reducer_name="identity",
+            benchmark_order=60,
         )(TrimNet2020)
 
 

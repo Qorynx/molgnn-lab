@@ -128,3 +128,15 @@ Các artifact chính của mỗi seed:
 Ở cấp experiment, `summary.csv` lưu kết quả test của từng seed và
 `aggregate_metrics.json` lưu mean/std/min/max cùng danh sách giá trị hữu hạn của từng
 metric qua các seed.
+
+## Kế hoạch refactor benchmark theo dataset
+
+Behavior hiện hành vẫn yêu cầu một `model.name` trong config của mỗi experiment. Project
+đang có kế hoạch chuyển sang dataset-driven benchmark: bỏ `models` thì chạy toàn bộ model,
+khai báo `models` thì chạy subset, và dùng `model_overrides` để thay đổi hyperparameter theo
+model. Truyền hyperparameter qua command line chưa nằm trong phạm vi kế hoạch này.
+
+Thiết kế, migration, artifact layout và test gates được mô tả tại
+[Dataset-driven Multi-model Benchmark Refactor Plan](docs/dataset-driven-benchmark-refactor-plan.md).
+Tài liệu này đang ở trạng thái **Planned - chưa triển khai**; các lệnh và schema phía trên
+vẫn là nguồn hướng dẫn cho source code hiện tại.
