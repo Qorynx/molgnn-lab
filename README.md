@@ -90,6 +90,129 @@ dataset local đều được Git bỏ qua.
 Tên mô hình được đặt tại `model.name`; tham số kiến trúc được truyền qua
 `model.parameters`.
 
+## Kiểm tra input contract
+
+Lệnh `describe-model` chỉ in ra contract runtime công khai của một model đã
+đăng ký: tensor bắt buộc, helper transform tùy chọn, prediction reducer và
+benchmark metadata. Nó không chứa tài liệu nội bộ hay metadata provenance;
+do đó an toàn để dùng trong package/app phát hành. Lệnh chỉ đọc metadata,
+không khởi tạo training run và không thay đổi model hay featurizer.
+
+```bash
+molgnn describe-model --model hignn
+molgnn describe-model --model dmpnn --format json
+```
+
+Output `text` phù hợp để đọc nhanh trong terminal. Output `json` phù hợp để
+tích hợp vào tooling hoặc kiểm tra programmatically.
+
+Các `graph_transform_name` dưới đây là helper có sẵn của project, không phải
+feature pipeline bắt buộc. Featurizer bên ngoài có thể tạo tensor trực tiếp và
+bỏ qua helper, miễn batch cuối cùng đáp ứng đúng required fields và ngữ nghĩa
+graph của model.
+
+| Nhóm model | Required batch fields | Helper bundled (tùy chọn) |
+| --- | --- | --- |
+| `gcn_baseline` | `x`, `edge_index`, `batch` | Không có |
+| `attentivefp`, `trimnet_2020` | `x`, `edge_index`, `edge_attr`, `batch` | Không có |
+| `dmpnn` | `x`, `edge_index`, `edge_attr`, `reverse_edge_index`, `batch` | `directed_edges` thêm reverse-edge map |
+| `hignn` | `x`, `edge_index`, `edge_attr`, `brics_edge_index`, `brics_edge_attr`, `atom_to_fragment`, `batch` | `brics_fragments` thêm BRICS fragment view |
+| `molecular_graph_embedding` | `mge_x`, `edge_index`, `mge_edge_attr`, `batch` | `coley_2017_features` thêm feature tensors cho MGE |
+
+Điểm chung là `edge_index` và `batch` luôn mô tả graph batch thực tế; tên và
+số chiều feature phụ thuộc từng core architecture. Khi dùng custom featurizer,
+hãy xem output của `describe-model` thay vì giả định canonical feature schema
+của project là bắt buộc.
+
+- Với D-MPNN, `reverse_edge_index` phải map mỗi directed edge sang đúng cạnh
+  đảo chiều và phải là involution: `reverse_edge_index[reverse_edge_index]`
+  trả về từng edge ban đầu.
+- Với HiGNN, `brics_edge_index`/`brics_edge_attr` là graph giữ lại sau khi cắt
+  BRICS; `atom_to_fragment` gán mỗi atom vào connected-component fragment của
+  chính molecule đó.
+- Với MGE, helper bundled tạo `mge_x`/`mge_edge_attr` theo default 32/8. Custom
+  feature schema vẫn hợp lệ nếu đồng thời đặt `input_atom_dim`/`input_bond_dim`
+  của model khớp với tensor cung cấp.
+
+## Hook tùy biến cho `molgnn train`
+
+CLI có hai điểm nối Python cục bộ để dùng feature pipeline hoặc cách train riêng
+mà không thêm plugin schema vào YAML:
+
+```powershell
+molgnn train --config experiment.yaml `
+  --featurizer .\my_featurizer.py:featurize `
+  --training-strategy .\my_training_strategy.py:fit
+```
+
+Mỗi selector có dạng `path.py:top_level_callable` (hoặc
+`dotted.module:top_level_callable`). Không truyền hai option này giữ nguyên hoàn
+toàn luồng mặc định: canonical RDKit featurizer, helper transform tương ứng model,
+AdamW và fit loop có sẵn. `validate-config` không import hay thực thi hook.
+
+Hook được thực thi như Python cục bộ đáng tin cậy; chỉ dùng file do bạn kiểm soát.
+Selector đã dùng cũng được ghi vào `runtime_hooks` trong config artifact của run.
+
+Featurizer nhận một SMILES hợp lệ cùng label đã parse và phải trả về
+`molgnn.data.MolecularData`:
+
+```python
+from molgnn.featurizer import featurize_smiles
+
+
+def featurize(smiles, *, targets, target_mask, sample_id):
+    data = featurize_smiles(
+        smiles,
+        targets=targets,
+        target_mask=target_mask,
+        sample_id=sample_id,
+    )
+    # Thay data.x/data.edge_attr hoặc thêm các fields riêng của model tại đây.
+    return data
+```
+
+Để giữ CSV parsing, split, target scaling và PyG batching thống nhất, output phải
+thỏa shared sample contract: `x`, `edge_index`, `edge_attr`, `y`, `y_mask`,
+`sample_id`, với feature width ổn định cho toàn dataset. Runner tự gắn lại
+`smiles`. Với D-MPNN, HiGNN hoặc MGE, hook hoặc cung cấp **đầy đủ** các derived
+fields bắt buộc của model, hoặc không cung cấp field nào để helper bundled của
+project tạo chúng; cung cấp dở dang sẽ lỗi sớm.
+
+Training strategy thay optimizer và fit loop, nhưng runner vẫn quản lý seed,
+DataLoader, checkpoint, đánh giá test và artifact. Cách ít rủi ro nhất là tái sử
+dụng fit loop chuẩn rồi chỉ đổi optimizer/scheduler:
+
+```python
+import torch
+
+from molgnn.trainer import StrategyResult, fit as default_fit
+
+
+def fit(model, loaders, task_adapter, training, *, device, target_names, on_epoch):
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=training.learning_rate,
+        weight_decay=training.weight_decay,
+    )
+    result = default_fit(
+        model,
+        loaders,
+        optimizer,
+        task_adapter,
+        epochs=training.epochs,
+        patience=training.patience,
+        monitor=training.monitor,
+        monitor_mode=training.monitor_mode,
+        device=device,
+        target_names=target_names,
+        callbacks=(on_epoch,),
+    )
+    return StrategyResult(result, optimizer.state_dict())
+```
+
+Một fit loop tự viết cũng hợp lệ nếu trả về `StrategyResult` chứa `FitResult` hợp
+lệ và gọi `on_epoch` cho mỗi epoch để giữ loss/metrics history đầy đủ.
+
 ## Chia dữ liệu
 
 `data.split` hỗ trợ:
@@ -129,14 +252,16 @@ Các artifact chính của mỗi seed:
 `aggregate_metrics.json` lưu mean/std/min/max cùng danh sách giá trị hữu hạn của từng
 metric qua các seed.
 
-## Kế hoạch refactor benchmark theo dataset
+## Phạm vi runtime
 
-Behavior hiện hành vẫn yêu cầu một `model.name` trong config của mỗi experiment. Project
-đang có kế hoạch chuyển sang dataset-driven benchmark: bỏ `models` thì chạy toàn bộ model,
-khai báo `models` thì chạy subset, và dùng `model_overrides` để thay đổi hyperparameter theo
-model. Truyền hyperparameter qua command line chưa nằm trong phạm vi kế hoạch này.
+Package runtime chỉ chứa implementation, input contract và validation để người
+dùng có thể thay featurizer hoặc training strategy mà không phải mang theo tài
+liệu nội bộ. Nó không tuyên bố tái lập feature schema, training protocol hay
+kết quả benchmark cụ thể.
 
-Thiết kế, migration, artifact layout và test gates được mô tả tại
-[Dataset-driven Multi-model Benchmark Refactor Plan](docs/dataset-driven-benchmark-refactor-plan.md).
-Tài liệu này đang ở trạng thái **Planned - chưa triển khai**; các lệnh và schema phía trên
-vẫn là nguồn hướng dẫn cho source code hiện tại.
+Canonical runner biểu diễn mỗi liên kết phân tử bằng hai cạnh ngược chiều và
+không đưa self-loop vào input. Mọi model chặn cạnh nối giữa các sample trong
+cùng batch; các model có phương trình nguồn tự cộng trạng thái node cũng chặn
+self-loop, còn `dmpnn` kiểm tra thêm reverse-edge map. Nếu dùng featurizer riêng,
+hãy giữ các quy ước này khi muốn dùng đúng input contract; `gcn_baseline` vẫn giữ
+hành vi PyG hợp lệ với đồ thị directed/self-loop.

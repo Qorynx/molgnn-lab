@@ -2,10 +2,17 @@
 .agents/
 .codex/
 .python-version
+# Internal design, audit, and planning material stays in the local workspace.
 docs/*
-!docs/dataset-driven-benchmark-refactor-plan.md
 papers/
 tests/
+# Public regression checks that preserve the architecture-fidelity contract.
+!tests/
+tests/*
+!tests/test_architecture_fidelity.py
+!tests/test_model_input_contracts.py
+!tests/test_describe_model_cli.py
+!tests/test_cli_hooks.py
 uv.lock
 
 # Keep only the public example configuration
