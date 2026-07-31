@@ -8,7 +8,7 @@ import hashlib
 import math
 import random
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -29,11 +29,13 @@ from .config import (
 )
 from .dataset import (
     CsvMoleculeDataset,
+    DataLoaders,
     PreparedDataset,
     build_dataloaders,
     prepare_model_samples,
 )
 from .evaluator import evaluate
+from .hooks import LoadedHook
 from .models.registration import register_builtin_models
 from .registry import (
     BuildContext,
@@ -45,8 +47,8 @@ from .registry import (
     validate_required_batch_fields,
 )
 from .splits import SplitIndices, make_split, split_rows
-from .tasks import TargetScalerState, build_task_adapter, fit_target_scaler
-from .trainer import EpochRecord, fit, resolve_device
+from .tasks import TaskAdapter, TargetScalerState, build_task_adapter, fit_target_scaler
+from .trainer import EpochRecord, StrategyResult, fit, resolve_device
 from .transforms import GraphTransform, get_graph_transform, register_builtin_transforms
 
 
@@ -121,7 +123,7 @@ def run_benchmark(config: ResolvedConfig) -> BenchmarkResult:
     for spec in specs:
         try:
             plan = _resolve_model_plan(config, spec, shared.context)
-            _preflight_model(plan, shared)
+            _preflight_model(plan, shared, plan.graph_transform)
         except Exception as exc:
             failures.extend(
                 _failures_for_model(
@@ -135,10 +137,11 @@ def run_benchmark(config: ResolvedConfig) -> BenchmarkResult:
     benchmark_root = config.experiment.output_dir / config.experiment.name
     for plan in plans:
         prepared: PreparedDataset | None = None
+        graph_transform = plan.graph_transform
         try:
             prepared = prepare_model_samples(
                 shared.dataset,
-                plan.graph_transform,
+                graph_transform,
             )
         except Exception as exc:
             failures.extend(
@@ -199,12 +202,19 @@ def run_experiment(config: ResolvedConfig) -> Path:
     return completed[0]
 
 
-def run_experiments(config: ResolvedConfig) -> tuple[Path, ...]:
-    """Compatibility wrapper retaining the current single-model artifact layout."""
+def run_experiments(
+    config: ResolvedConfig,
+    *,
+    featurizer: LoadedHook | None = None,
+    training_strategy: LoadedHook | None = None,
+) -> tuple[Path, ...]:
+    """Run the CLI lifecycle with optional local featurizer/training hooks."""
     return _run_legacy_experiments(
         config,
         config.experiment.seeds,
         write_summary=True,
+        featurizer=featurizer,
+        training_strategy=training_strategy,
     )
 
 
@@ -213,10 +223,16 @@ def _run_legacy_experiments(
     seeds: Sequence[int],
     *,
     write_summary: bool,
+    featurizer: LoadedHook | None = None,
+    training_strategy: LoadedHook | None = None,
 ) -> tuple[Path, ...]:
     register_builtin_models()
     register_builtin_transforms()
-    shared = _prepare_shared_data(config)
+    shared = _prepare_shared_data(
+        config,
+        featurizer=featurizer,
+        training_strategy=training_strategy,
+    )
     spec = get_model_spec(config.model.name)
     plan = _resolve_model_plan(
         config,
@@ -224,8 +240,13 @@ def _run_legacy_experiments(
         shared.context,
         compatibility_parameters=config.model.parameters,
     )
-    _preflight_model(plan, shared)
-    prepared = prepare_model_samples(shared.dataset, plan.graph_transform)
+    graph_transform = (
+        plan.graph_transform
+        if featurizer is None
+        else _effective_graph_transform(plan, shared.dataset)
+    )
+    _preflight_model(plan, shared, graph_transform)
+    prepared = prepare_model_samples(shared.dataset, graph_transform)
     completed: list[Path] = []
     summary_rows: list[dict[str, object]] = []
     failed_rows: list[dict[str, object]] = []
@@ -257,6 +278,7 @@ def _run_legacy_experiments(
                     prepared,
                     shared,
                     paths,
+                    training_strategy=training_strategy,
                 )
             except Exception as exc:
                 failed_row: dict[str, object] = {
@@ -293,7 +315,12 @@ def _run_legacy_experiments(
     return tuple(completed)
 
 
-def _prepare_shared_data(config: ResolvedConfig) -> _SharedBenchmarkData:
+def _prepare_shared_data(
+    config: ResolvedConfig,
+    *,
+    featurizer: LoadedHook | None = None,
+    training_strategy: LoadedHook | None = None,
+) -> _SharedBenchmarkData:
     dataset = CsvMoleculeDataset(
         config.data.path,
         smiles_column=config.data.smiles_column,
@@ -302,6 +329,8 @@ def _prepare_shared_data(config: ResolvedConfig) -> _SharedBenchmarkData:
         invalid_smiles=config.data.invalid_smiles,
         id_column=config.data.id_column,
         split_column=config.data.split_column,
+        featurizer=None if featurizer is None else featurizer.callback,
+        feature_schema_version=None if featurizer is None else featurizer.reference,
     )
     print(
         f"dataset: valid={dataset.summary.valid_rows} "
@@ -332,6 +361,16 @@ def _prepare_shared_data(config: ResolvedConfig) -> _SharedBenchmarkData:
             "skipped_invalid_smiles": dataset.summary.skipped_invalid_smiles,
         },
     }
+    hook_references = {
+        name: hook.reference
+        for name, hook in (
+            ("featurizer", featurizer),
+            ("training_strategy", training_strategy),
+        )
+        if hook is not None
+    }
+    if hook_references:
+        metadata["runtime_hooks"] = hook_references
     records = tuple(dict(row) for row in split_rows(splits, dataset))
     return _SharedBenchmarkData(
         dataset=dataset,
@@ -369,6 +408,7 @@ def _resolve_model_plan(
 def _preflight_model(
     plan: _ResolvedModelPlan,
     shared: _SharedBenchmarkData,
+    graph_transform: GraphTransform | None,
 ) -> None:
     try:
         representative_count = min(plan.training.batch_size, len(shared.splits.train))
@@ -377,7 +417,7 @@ def _preflight_model(
         for index in indices:
             sample = shared.dataset[index]
             samples.append(
-                sample if plan.graph_transform is None else plan.graph_transform(sample)
+                sample if graph_transform is None else graph_transform(sample)
             )
         batch = next(iter(PyGDataLoader(samples, batch_size=representative_count)))
         validate_required_batch_fields(batch, plan.spec)
@@ -399,6 +439,40 @@ def _preflight_model(
             )
     finally:
         _cleanup_resources("cpu")
+
+
+def _effective_graph_transform(
+    plan: _ResolvedModelPlan,
+    dataset: CsvMoleculeDataset,
+) -> GraphTransform | None:
+    """Skip a bundled derivation when a custom featurizer already supplies it."""
+
+    transform = plan.graph_transform
+    if transform is None:
+        return None
+    derived_fields = tuple(
+        field
+        for field in plan.spec.required_batch_fields
+        if field not in {"x", "edge_index", "edge_attr", "batch"}
+    )
+    if not derived_fields:
+        return transform
+
+    availability = {
+        field: all(
+            isinstance(getattr(sample, field, None), Tensor) for sample in dataset
+        )
+        for field in derived_fields
+    }
+    if all(availability.values()):
+        return None
+    if not any(availability.values()):
+        return transform
+    fields = ", ".join(field for field, present in availability.items() if present)
+    raise RunnerError(
+        f"custom featurizer provides only part of model '{plan.spec.name}' derived "
+        f"fields: {fields}; provide all or let the bundled transform derive all"
+    )
 
 
 def _effective_model_config(
@@ -431,6 +505,8 @@ def _run_model_seed(
     prepared: PreparedDataset,
     shared: _SharedBenchmarkData,
     paths: RunPaths,
+    *,
+    training_strategy: LoadedHook | None = None,
 ) -> Path:
     """Run one preflighted model seed against shared prepared data."""
     try:
@@ -466,11 +542,6 @@ def _run_model_seed(
             shared.context,
         )
         adapter = build_task_adapter(config.task, shared.scaler)
-        optimizer = torch.optim.AdamW(
-            model.parameters(),
-            lr=resolved_run.training.learning_rate,
-            weight_decay=resolved_run.training.weight_decay,
-        )
         resolved_device = resolve_device(resolved_run.training.device)
         print(f"model: {resolved_run.model_name} seed: {resolved_run.seed}")
         print(f"device: {resolved_device}")
@@ -489,19 +560,17 @@ def _run_model_seed(
                 f"best={'yes' if record.is_best else 'no'}"
             )
 
-        fit_result = fit(
+        strategy_result = _fit_with_strategy(
+            training_strategy,
             model,
             loaders,
-            optimizer,
             adapter,
-            epochs=resolved_run.training.epochs,
-            patience=resolved_run.training.patience,
-            monitor=resolved_run.training.monitor,
-            monitor_mode=resolved_run.training.monitor_mode,
+            resolved_run.training,
             device=resolved_device,
             target_names=config.data.target_columns,
-            callbacks=(on_epoch,),
+            on_epoch=on_epoch,
         )
+        fit_result = strategy_result.fit_result
         print(
             f"best epoch: {fit_result.best_epoch + 1} "
             f"monitor={fit_result.best_value:.6g}"
@@ -513,7 +582,7 @@ def _run_model_seed(
             monitor_name=resolved_run.training.monitor,
             monitor_value=fit_result.best_value,
             model_state_dict=fit_result.best_state_dict,
-            optimizer_state_dict=optimizer.state_dict(),
+            optimizer_state_dict=strategy_result.optimizer_state_dict,
             resolved_config=serializable_config,
             feature_schema_version=schema_version,
             target_scaler_state=(
@@ -532,7 +601,7 @@ def _run_model_seed(
             monitor_name=resolved_run.training.monitor,
             monitor_value=last_monitor,
             model_state_dict=model.state_dict(),
-            optimizer_state_dict=optimizer.state_dict(),
+            optimizer_state_dict=strategy_result.optimizer_state_dict,
             resolved_config=serializable_config,
             feature_schema_version=schema_version,
             target_scaler_state=(
@@ -570,6 +639,64 @@ def _run_model_seed(
     except Exception as exc:
         paths.mark_failed(exc)
         raise
+
+
+def _fit_with_strategy(
+    strategy: LoadedHook | None,
+    model: torch.nn.Module,
+    loaders: DataLoaders,
+    task_adapter: TaskAdapter,
+    training: TrainingConfig,
+    *,
+    device: torch.device,
+    target_names: Sequence[str],
+    on_epoch: Callable[[EpochRecord], None],
+) -> StrategyResult:
+    """Run the default fit loop or one caller-provided strategy callback."""
+
+    if strategy is None:
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=training.learning_rate,
+            weight_decay=training.weight_decay,
+        )
+        return StrategyResult(
+            fit_result=fit(
+                model,
+                loaders,
+                optimizer,
+                task_adapter,
+                epochs=training.epochs,
+                patience=training.patience,
+                monitor=training.monitor,
+                monitor_mode=training.monitor_mode,
+                device=device,
+                target_names=target_names,
+                callbacks=(on_epoch,),
+            ),
+            optimizer_state_dict=optimizer.state_dict(),
+        )
+
+    try:
+        result = strategy.callback(
+            model,
+            loaders,
+            task_adapter,
+            training,
+            device=device,
+            target_names=target_names,
+            on_epoch=on_epoch,
+        )
+    except Exception as exc:
+        raise RunnerError(
+            f"Training strategy '{strategy.reference}' failed: {exc}"
+        ) from exc
+    if not isinstance(result, StrategyResult):
+        raise RunnerError(
+            f"Training strategy '{strategy.reference}' must return "
+            "molgnn.trainer.StrategyResult"
+        )
+    return result
 
 
 def _validate_selected_overrides(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -64,6 +64,24 @@ class FitResult:
     stopped_early: bool
     best_state_dict: dict[str, Tensor]
     device: torch.device
+
+
+@dataclass(frozen=True)
+class StrategyResult:
+    """Normalized result returned by an optional external training strategy."""
+
+    fit_result: FitResult
+    optimizer_state_dict: Mapping[str, object]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.fit_result, FitResult):
+            raise TrainerError("strategy result must contain a FitResult")
+        if not isinstance(self.optimizer_state_dict, Mapping):
+            raise TrainerError("strategy optimizer_state_dict must be a mapping")
+        if not self.fit_result.history:
+            raise TrainerError("strategy fit result must include at least one epoch")
+        if not 0 <= self.fit_result.best_epoch < len(self.fit_result.history):
+            raise TrainerError("strategy best_epoch must index its fit history")
 
 
 @dataclass
@@ -308,6 +326,7 @@ __all__ = [
     "EarlyStoppingState",
     "EpochRecord",
     "FitResult",
+    "StrategyResult",
     "TrainEpochResult",
     "TrainerError",
     "fit",

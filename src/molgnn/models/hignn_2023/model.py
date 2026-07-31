@@ -10,6 +10,7 @@ from torch_geometric.nn import GATConv
 from torch_geometric.utils import scatter
 
 from ..base import BaseMolecularModel
+from ..contracts import validate_batched_molecular_graph
 from .layers import FeatureAttention, NTNConv
 
 
@@ -70,8 +71,11 @@ class HiGNN(BaseMolecularModel):
         )
         self.gate = nn.Linear(3 * hidden_dim, hidden_dim)
         self.feature_attention = FeatureAttention(hidden_dim, feature_reduction)
+        # Equation (12) applies the same W6 projection to molecular and
+        # fragment embeddings.  Keep the homogeneous GATConv configuration
+        # even though forward() supplies the two inputs as a bipartite pair.
         self.fragment_to_molecule = GATConv(
-            (hidden_dim, hidden_dim),
+            hidden_dim,
             hidden_dim,
             heads=4,
             concat=False,
@@ -110,7 +114,9 @@ class HiGNN(BaseMolecularModel):
         ) = self._batch_tensors(batch)
 
         molecular_atoms = self._encode(x, edge_index, edge_attr, graph_batch)
-        fragment_atoms = self._encode(x, brics_edge_index, brics_edge_attr, atom_to_fragment)
+        fragment_atoms = self._encode(
+            x, brics_edge_index, brics_edge_attr, atom_to_fragment
+        )
         molecular_embedding = F.relu(
             scatter(
                 molecular_atoms,
@@ -158,14 +164,18 @@ class HiGNN(BaseMolecularModel):
         for convolution in self.convolutions:
             assert isinstance(convolution, NTNConv)
             message = F.relu(convolution(x, edge_index, edge_attr))
-            beta = torch.sigmoid(self.gate(torch.cat((x, message, x - message), dim=-1)))
+            beta = torch.sigmoid(
+                self.gate(torch.cat((x, message, x - message), dim=-1))
+            )
             x = beta * x + (1 - beta) * message
             x = self.feature_attention(x, attention_group)
         return x
 
     def _batch_tensors(
         self, batch: Batch
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, int, int]:
+    ) -> tuple[
+        Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, int, int
+    ]:
         names = (
             "x",
             "edge_index",
@@ -178,7 +188,15 @@ class HiGNN(BaseMolecularModel):
         values = tuple(getattr(batch, name, None) for name in names)
         if not all(isinstance(value, Tensor) for value in values):
             raise ValueError(f"batch must provide {', '.join(names)} tensors")
-        x, edge_index, edge_attr, brics_edge_index, brics_edge_attr, fragments, graph_batch = values
+        (
+            x,
+            edge_index,
+            edge_attr,
+            brics_edge_index,
+            brics_edge_attr,
+            fragments,
+            graph_batch,
+        ) = values
         assert isinstance(x, Tensor)
         assert isinstance(edge_index, Tensor)
         assert isinstance(edge_attr, Tensor)
@@ -192,35 +210,56 @@ class HiGNN(BaseMolecularModel):
         if x.dtype != torch.float32 or not torch.isfinite(x).all():
             raise ValueError("batch.x must contain finite torch.float32 values")
         self._validate_edges(edge_index, edge_attr, "edge", x.shape[0])
-        self._validate_edges(brics_edge_index, brics_edge_attr, "brics_edge", x.shape[0])
+        self._validate_edges(
+            brics_edge_index, brics_edge_attr, "brics_edge", x.shape[0]
+        )
         if graph_batch.shape != (x.shape[0],) or graph_batch.dtype != torch.long:
             raise ValueError("batch.batch must have shape [N] and dtype torch.long")
         if fragments.shape != (x.shape[0],) or fragments.dtype != torch.long:
-            raise ValueError("batch.atom_to_fragment must have shape [N] and dtype torch.long")
-        if any(value.device != x.device for value in values if isinstance(value, Tensor)):
+            raise ValueError(
+                "batch.atom_to_fragment must have shape [N] and dtype torch.long"
+            )
+        if any(
+            value.device != x.device for value in values if isinstance(value, Tensor)
+        ):
             raise ValueError("all HiGNN batch tensors must be on the same device")
         if graph_batch.min() < 0 or fragments.min() < 0:
             raise ValueError("batch and atom_to_fragment indices must be non-negative")
 
-        graph_ids = torch.unique(graph_batch, sorted=True)
         fragment_ids = torch.unique(fragments, sorted=True)
-        if not torch.equal(graph_ids, torch.arange(graph_ids.numel(), device=x.device)):
-            raise ValueError("batch.batch graph indices must be contiguous from zero")
-        if not torch.equal(fragment_ids, torch.arange(fragment_ids.numel(), device=x.device)):
-            raise ValueError("batch.atom_to_fragment indices must be contiguous from zero")
-        for indices, name in ((edge_index, "edge_index"), (brics_edge_index, "brics_edge_index")):
-            if indices.shape[1] and not torch.equal(
-                graph_batch[indices[0]], graph_batch[indices[1]]
-            ):
-                raise ValueError(f"batch.{name} must not connect different graphs")
+        if not torch.equal(
+            fragment_ids, torch.arange(fragment_ids.numel(), device=x.device)
+        ):
+            raise ValueError(
+                "batch.atom_to_fragment indices must be contiguous from zero"
+            )
+        num_graphs = validate_batched_molecular_graph(
+            edge_index,
+            graph_batch,
+            num_nodes=x.shape[0],
+            device=x.device,
+            forbid_self_loops=True,
+        )
+        validate_batched_molecular_graph(
+            brics_edge_index,
+            graph_batch,
+            num_nodes=x.shape[0],
+            device=x.device,
+            edge_field="brics_edge_index",
+            forbid_self_loops=True,
+        )
         if brics_edge_index.shape[1] and not torch.equal(
             fragments[brics_edge_index[0]], fragments[brics_edge_index[1]]
         ):
             raise ValueError("batch.brics_edge_index must stay within each fragment")
 
         num_fragments = fragment_ids.numel()
-        fragment_min = scatter(graph_batch, fragments, dim=0, dim_size=num_fragments, reduce="min")
-        fragment_max = scatter(graph_batch, fragments, dim=0, dim_size=num_fragments, reduce="max")
+        fragment_min = scatter(
+            graph_batch, fragments, dim=0, dim_size=num_fragments, reduce="min"
+        )
+        fragment_max = scatter(
+            graph_batch, fragments, dim=0, dim_size=num_fragments, reduce="max"
+        )
         if not torch.equal(fragment_min, fragment_max):
             raise ValueError("each fragment must belong to exactly one graph")
         return (
@@ -232,20 +271,30 @@ class HiGNN(BaseMolecularModel):
             fragments,
             graph_batch,
             fragment_min,
-            graph_ids.numel(),
+            num_graphs,
             num_fragments,
         )
 
     def _validate_edges(
         self, edge_index: Tensor, edge_attr: Tensor, field: str, num_nodes: int
     ) -> None:
-        if edge_index.ndim != 2 or edge_index.shape[0] != 2 or edge_index.dtype != torch.long:
-            raise ValueError(f"batch.{field}_index must have shape [2, E] and dtype torch.long")
+        if (
+            edge_index.ndim != 2
+            or edge_index.shape[0] != 2
+            or edge_index.dtype != torch.long
+        ):
+            raise ValueError(
+                f"batch.{field}_index must have shape [2, E] and dtype torch.long"
+            )
         if edge_attr.shape != (edge_index.shape[1], self.bond_dim):
             raise ValueError(f"batch.{field}_attr must have shape [E, {self.bond_dim}]")
         if edge_attr.dtype != torch.float32 or not torch.isfinite(edge_attr).all():
-            raise ValueError(f"batch.{field}_attr must contain finite torch.float32 values")
-        if edge_index.shape[1] and (edge_index.min() < 0 or edge_index.max() >= num_nodes):
+            raise ValueError(
+                f"batch.{field}_attr must contain finite torch.float32 values"
+            )
+        if edge_index.shape[1] and (
+            edge_index.min() < 0 or edge_index.max() >= num_nodes
+        ):
             raise ValueError(f"batch.{field}_index contains an invalid node index")
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, cast, overload
@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 TaskType = Literal["regression", "binary_classification"]
 InvalidSmilesPolicy = Literal["error", "skip"]
+SampleFeaturizer = Callable[..., MolecularData]
 
 
 class DatasetError(ValueError):
@@ -86,7 +87,7 @@ class MolecularDataset(Protocol):
 
 
 class CsvMoleculeDataset(Dataset[MolecularData]):
-    """Eager in-memory dataset of canonical molecular graph samples.
+    """Eager in-memory dataset of canonical or caller-featurized samples.
 
     ``sample_id`` is always the zero-based source CSV row position.  This
     remains stable when invalid rows are skipped and deliberately does not use
@@ -103,7 +104,9 @@ class CsvMoleculeDataset(Dataset[MolecularData]):
         invalid_smiles: InvalidSmilesPolicy = "error",
         id_column: str | None = None,
         split_column: str | None = None,
-        schema: FeatureSchema = CANONICAL_FEATURE_SCHEMA_V1,
+        schema: FeatureSchema | None = None,
+        featurizer: SampleFeaturizer | None = None,
+        feature_schema_version: str | None = None,
     ) -> None:
         self.path = Path(path).expanduser().resolve()
         self.smiles_column = _require_column_name(smiles_column, "smiles_column")
@@ -112,7 +115,17 @@ class CsvMoleculeDataset(Dataset[MolecularData]):
         self.invalid_smiles = _validate_invalid_smiles_policy(invalid_smiles)
         self.id_column = _optional_column_name(id_column, "id_column")
         self.split_column = _optional_column_name(split_column, "split_column")
-        self.feature_schema = schema
+        if schema is not None and not isinstance(schema, FeatureSchema):
+            raise DatasetError("schema must be a FeatureSchema or None")
+        if featurizer is not None and not callable(featurizer):
+            raise DatasetError("featurizer must be callable or None")
+        if feature_schema_version is not None and (
+            not isinstance(feature_schema_version, str)
+            or not feature_schema_version.strip()
+        ):
+            raise DatasetError(
+                "feature_schema_version must be a non-empty string or None"
+            )
 
         dataframe = _read_and_validate_csv(
             self.path,
@@ -147,15 +160,30 @@ class CsvMoleculeDataset(Dataset[MolecularData]):
                 task_type=self.task_type,
                 source_row_id=source_row_id,
             )
-            data = featurize_smiles(
-                smiles,
-                targets=targets,
-                target_mask=target_mask,
-                sample_id=source_row_id,
-            )
-            validate_molecular_data(
-                data, schema=self.feature_schema, num_targets=len(self.target_names)
-            )
+            if featurizer is None:
+                data = featurize_smiles(
+                    smiles,
+                    targets=targets,
+                    target_mask=target_mask,
+                    sample_id=source_row_id,
+                )
+            else:
+                try:
+                    data = featurizer(
+                        smiles,
+                        targets=targets,
+                        target_mask=target_mask,
+                        sample_id=source_row_id,
+                    )
+                except Exception as exc:
+                    raise DatasetError(
+                        f"Custom featurizer failed at source row {source_row_id}: {exc}"
+                    ) from exc
+                if not isinstance(data, MolecularData):
+                    raise DatasetError(
+                        "Custom featurizer must return molgnn.data.MolecularData"
+                    )
+            data.smiles = smiles
             samples.append(data)
             sample_ids.append(source_row_id)
             smiles_values.append(smiles)
@@ -166,6 +194,28 @@ class CsvMoleculeDataset(Dataset[MolecularData]):
                 split_labels.append(
                     None if _is_missing(raw_split) else str(raw_split).strip()
                 )
+
+        if schema is None:
+            schema = (
+                CANONICAL_FEATURE_SCHEMA_V1
+                if featurizer is None
+                else _infer_feature_schema(
+                    samples,
+                    version=feature_schema_version or "custom_features",
+                )
+            )
+        self.feature_schema = schema
+        for data, source_row_id in zip(samples, sample_ids, strict=True):
+            try:
+                validate_molecular_data(
+                    data,
+                    schema=self.feature_schema,
+                    num_targets=len(self.target_names),
+                )
+            except (TypeError, ValueError) as exc:
+                raise DatasetError(
+                    f"Invalid molecular sample at source row {source_row_id}: {exc}"
+                ) from exc
 
         self._samples = samples
         self._sample_ids = tuple(sample_ids)
@@ -444,6 +494,35 @@ def _parse_targets(
     return targets, target_mask
 
 
+def _infer_feature_schema(
+    samples: Sequence[MolecularData], *, version: str
+) -> FeatureSchema:
+    """Infer a stable feature width contract from custom featurizer output."""
+
+    if not samples:
+        raise DatasetError("Custom featurizer produced no valid molecular samples")
+    first = samples[0]
+    x = getattr(first, "x", None)
+    edge_attr = getattr(first, "edge_attr", None)
+    if (
+        not isinstance(x, torch.Tensor)
+        or x.ndim != 2
+        or x.shape[1] < 1
+        or not isinstance(edge_attr, torch.Tensor)
+        or edge_attr.ndim != 2
+        or edge_attr.shape[1] < 1
+    ):
+        raise DatasetError(
+            "Custom featurizer output must provide x and edge_attr matrices with "
+            "positive feature widths"
+        )
+    return FeatureSchema(
+        version=version,
+        atom_dim=int(x.shape[1]),
+        bond_dim=int(edge_attr.shape[1]),
+    )
+
+
 __all__ = [
     "CsvMoleculeDataset",
     "DataLoaders",
@@ -451,6 +530,7 @@ __all__ = [
     "DatasetSummary",
     "MolecularDataset",
     "PreparedDataset",
+    "SampleFeaturizer",
     "build_dataloaders",
     "prepare_model_samples",
 ]

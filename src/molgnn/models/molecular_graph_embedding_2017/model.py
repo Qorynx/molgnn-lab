@@ -9,6 +9,7 @@ from torch_geometric.data import Batch
 from torch_geometric.utils import scatter
 
 from ..base import BaseMolecularModel
+from ..contracts import validate_batched_molecular_graph
 from .layers import ColeyGraphConv
 
 
@@ -104,7 +105,9 @@ class MolecularGraphEmbedding(BaseMolecularModel):
                 x = convolution(x, edge_index, edge_attr)
         return fingerprint
 
-    def _batch_tensors(self, batch: Batch) -> tuple[Tensor, Tensor, Tensor, Tensor, int]:
+    def _batch_tensors(
+        self, batch: Batch
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor, int]:
         names = ("mge_x", "edge_index", "mge_edge_attr", "batch")
         values = tuple(getattr(batch, name, None) for name in names)
         if not all(isinstance(value, Tensor) for value in values):
@@ -120,26 +123,36 @@ class MolecularGraphEmbedding(BaseMolecularModel):
             raise ValueError(f"batch.mge_x must have shape [N, {self.input_atom_dim}]")
         if x.dtype != torch.float32 or not torch.isfinite(x).all():
             raise ValueError("batch.mge_x must contain finite torch.float32 values")
-        if edge_index.ndim != 2 or edge_index.shape[0] != 2 or edge_index.dtype != torch.long:
-            raise ValueError("batch.edge_index must have shape [2, E] and dtype torch.long")
+        if (
+            edge_index.ndim != 2
+            or edge_index.shape[0] != 2
+            or edge_index.dtype != torch.long
+        ):
+            raise ValueError(
+                "batch.edge_index must have shape [2, E] and dtype torch.long"
+            )
         if edge_attr.shape != (edge_count, self.input_bond_dim):
-            raise ValueError(f"batch.mge_edge_attr must have shape [E, {self.input_bond_dim}]")
+            raise ValueError(
+                f"batch.mge_edge_attr must have shape [E, {self.input_bond_dim}]"
+            )
         if edge_attr.dtype != torch.float32 or not torch.isfinite(edge_attr).all():
-            raise ValueError("batch.mge_edge_attr must contain finite torch.float32 values")
+            raise ValueError(
+                "batch.mge_edge_attr must contain finite torch.float32 values"
+            )
         if graph_batch.shape != (x.shape[0],) or graph_batch.dtype != torch.long:
             raise ValueError("batch.batch must have shape [N] and dtype torch.long")
         if graph_batch.numel() == 0 or graph_batch.min() < 0:
             raise ValueError("batch.batch must contain non-negative graph indices")
         if edge_count and (edge_index.min() < 0 or edge_index.max() >= x.shape[0]):
             raise ValueError("batch.edge_index contains an invalid node index")
-        if edge_count and not torch.equal(graph_batch[edge_index[0]], graph_batch[edge_index[1]]):
-            raise ValueError("batch.edge_index must not connect different graphs")
-
-        graph_ids = torch.unique(graph_batch, sorted=True)
-        expected_ids = torch.arange(graph_ids.numel(), device=graph_batch.device)
-        if not torch.equal(graph_ids, expected_ids):
-            raise ValueError("batch.batch graph indices must be contiguous from zero")
-        return x, edge_index, edge_attr, graph_batch, graph_ids.numel()
+        num_graphs = validate_batched_molecular_graph(
+            edge_index,
+            graph_batch,
+            num_nodes=x.shape[0],
+            device=x.device,
+            forbid_self_loops=True,
+        )
+        return x, edge_index, edge_attr, graph_batch, num_graphs
 
 
 def _reset_linear(layer: nn.Linear) -> None:

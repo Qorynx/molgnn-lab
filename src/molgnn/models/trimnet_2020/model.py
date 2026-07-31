@@ -9,6 +9,7 @@ from torch_geometric.data import Batch
 from torch_geometric.nn import Set2Set
 
 from ..base import BaseMolecularModel
+from ..contracts import validate_batched_molecular_graph
 from .layers import TripletMessageBlock, _positive_int
 
 
@@ -51,7 +52,10 @@ class TrimNet2020(BaseMolecularModel):
         self.dropout = float(dropout)
         self.input_projection = nn.Linear(atom_dim, hidden_dim)
         self.blocks = nn.ModuleList(
-            [TripletMessageBlock(hidden_dim, bond_dim, heads, num_timesteps) for _ in range(depth)]
+            [
+                TripletMessageBlock(hidden_dim, bond_dim, heads, num_timesteps)
+                for _ in range(depth)
+            ]
         )
         self.readout = Set2Set(hidden_dim, processing_steps=3)
         self.predictor = nn.Sequential(
@@ -65,7 +69,9 @@ class TrimNet2020(BaseMolecularModel):
     def forward(self, batch: Batch) -> Tensor:
         """Return raw regression predictions or classification logits."""
 
-        x, edge_index, edge_attr, graph_batch = _batch_tensors(batch, self.atom_dim, self.bond_dim)
+        x, edge_index, edge_attr, graph_batch = _batch_tensors(
+            batch, self.atom_dim, self.bond_dim
+        )
         x = F.celu(self.input_projection(x))
         for block in self.blocks:
             x = x + F.dropout(
@@ -74,7 +80,9 @@ class TrimNet2020(BaseMolecularModel):
                 training=self.training,
             )
         graph_embedding = self.readout(x, graph_batch)
-        graph_embedding = F.dropout(graph_embedding, p=self.dropout, training=self.training)
+        graph_embedding = F.dropout(
+            graph_embedding, p=self.dropout, training=self.training
+        )
         return self.predictor(graph_embedding)
 
 
@@ -82,10 +90,13 @@ def _batch_tensors(
     batch: Batch, atom_dim: int, bond_dim: int
 ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
     values = tuple(
-        getattr(batch, field, None) for field in ("x", "edge_index", "edge_attr", "batch")
+        getattr(batch, field, None)
+        for field in ("x", "edge_index", "edge_attr", "batch")
     )
     if not all(isinstance(value, Tensor) for value in values):
-        raise ValueError("batch must provide x, edge_index, edge_attr, and batch tensors")
+        raise ValueError(
+            "batch must provide x, edge_index, edge_attr, and batch tensors"
+        )
     x, edge_index, edge_attr, graph_batch = values
     assert isinstance(x, Tensor)
     assert isinstance(edge_index, Tensor)
@@ -114,6 +125,13 @@ def _batch_tensors(
         raise ValueError("batch.batch must contain non-negative graph indices")
     if edge_index.numel() and (edge_index.min() < 0 or edge_index.max() >= x.shape[0]):
         raise ValueError("batch.edge_index contains an invalid node index")
+    validate_batched_molecular_graph(
+        edge_index,
+        graph_batch,
+        num_nodes=x.shape[0],
+        device=x.device,
+        forbid_self_loops=True,
+    )
     return x, edge_index, edge_attr, graph_batch
 
 

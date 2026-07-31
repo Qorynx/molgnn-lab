@@ -24,3 +24,6 @@ molgnn = "molgnn.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/molgnn"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["src/molgnn"]

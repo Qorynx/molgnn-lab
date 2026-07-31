@@ -1,4 +1,4 @@
-"""Built-in model metadata registration, separate from architecture imports."""
+"""Built-in runtime registration, separate from architecture imports."""
 
 from __future__ import annotations
 
