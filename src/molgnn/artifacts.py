@@ -62,7 +62,7 @@ class RunPaths:
             experiment_dir=experiment_dir,
             seed_dir=seed_dir,
             experiment_config=experiment_dir / "experiment_config.yaml",
-            split_csv=experiment_dir / "split.csv",
+            split_csv=seed_dir / "split.csv",
             summary_csv=experiment_dir / "summary.csv",
             aggregate_metrics_json=experiment_dir / "aggregate_metrics.json",
             config_yaml=seed_dir / "config.yaml",
@@ -77,6 +77,7 @@ class RunPaths:
         if initialize_status:
             for artifact in (
                 paths.config_yaml,
+                paths.split_csv,
                 paths.status_json,
                 paths.loss_history_csv,
                 paths.metrics_history_csv,
@@ -119,7 +120,7 @@ class RunPaths:
         """Replace the experiment summary with one row per configured seed."""
         if not rows:
             raise ArtifactError("cannot write an empty experiment summary")
-        preferred = ("seed", "status", "error_type", "error_message")
+        preferred = ("seed", "split_seed", "status", "error_type", "error_message")
         keys = set().union(*(row.keys() for row in rows))
         header = tuple(item for item in preferred if item in keys) + tuple(
             sorted(keys - set(preferred))

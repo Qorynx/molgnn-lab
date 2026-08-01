@@ -9,6 +9,7 @@ data:
   target_columns: [target]
   id_column: null
   split: random
+  split_seed_mode: first_experiment_seed
   split_ratios: [0.8, 0.1, 0.1]
   split_column: null
   invalid_smiles: error

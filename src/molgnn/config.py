@@ -35,6 +35,9 @@ class DataConfig:
     split_ratios: tuple[float, float, float]
     split_column: str | None
     invalid_smiles: Literal["error", "skip"]
+    split_seed_mode: Literal["first_experiment_seed", "per_experiment_seed"] = (
+        "first_experiment_seed"
+    )
 
 
 @dataclass(frozen=True)
@@ -99,6 +102,7 @@ _SECTION_KEYS: dict[str, frozenset[str]] = {
             "target_columns",
             "id_column",
             "split",
+            "split_seed_mode",
             "split_ratios",
             "split_column",
             "invalid_smiles",
@@ -136,6 +140,7 @@ _DEFAULT_CONFIG: dict[str, Any] = {
         "target_columns": ["target"],
         "id_column": None,
         "split": "random",
+        "split_seed_mode": "first_experiment_seed",
         "split_ratios": [0.8, 0.1, 0.1],
         "split_column": None,
         "invalid_smiles": "error",
@@ -594,6 +599,12 @@ def load_config(path: Path) -> ResolvedConfig:
     split = _string(data_raw["split"], field="data.split")
     if split not in {"random", "scaffold", "predefined"}:
         raise ConfigError("'data.split' must be random, scaffold, or predefined")
+    split_seed_mode = _string(data_raw["split_seed_mode"], field="data.split_seed_mode")
+    if split_seed_mode not in {"first_experiment_seed", "per_experiment_seed"}:
+        raise ConfigError(
+            "'data.split_seed_mode' must be first_experiment_seed or "
+            "per_experiment_seed"
+        )
     split_column = _optional_string(
         data_raw.get("split_column"), field="data.split_column"
     )
@@ -611,6 +622,9 @@ def load_config(path: Path) -> ResolvedConfig:
         target_columns=target_columns,
         id_column=_optional_string(data_raw.get("id_column"), field="data.id_column"),
         split=cast(Literal["random", "scaffold", "predefined"], split),
+        split_seed_mode=cast(
+            Literal["first_experiment_seed", "per_experiment_seed"], split_seed_mode
+        ),
         split_ratios=_ratios(data_raw["split_ratios"]),
         split_column=split_column,
         invalid_smiles=cast(Literal["error", "skip"], invalid_smiles),

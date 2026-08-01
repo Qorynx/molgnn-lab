@@ -225,6 +225,16 @@ lệ và gọi `on_epoch` cho mỗi epoch để giữ loss/metrics history đầ
 
 Tỷ lệ được khai báo theo thứ tự train/validation/test trong `data.split_ratios`.
 
+`data.split_seed_mode` quyết định cách tái sử dụng split khi khai báo nhiều
+`experiment.seeds`:
+
+- `first_experiment_seed` (mặc định): tạo một split từ seed đầu tiên và dùng
+  chung cho mọi seed.
+- `per_experiment_seed`: tạo lại split và target scaler theo từng seed; các
+  model tại cùng một seed vẫn dùng chung split đó.
+
+Với `predefined`, partition lấy từ CSV nên policy này không thay đổi split.
+
 ## Task và metric
 
 Regression dùng `loss: mse` và hỗ trợ `rmse`, `mae`, `r2`. Binary classification dùng
@@ -235,8 +245,8 @@ train.
 ## Output
 
 Mỗi experiment lưu config đã resolve, split assignment và metric tổng hợp. Mỗi seed
-có thư mục riêng chứa checkpoint tốt nhất/gần nhất, lịch sử huấn luyện và dự đoán trên
-tập test. Có thể khai báo nhiều seed bằng `experiment.seeds`.
+có thư mục riêng chứa `split.csv`, checkpoint tốt nhất/gần nhất, lịch sử huấn luyện
+và dự đoán trên tập test. Có thể khai báo nhiều seed bằng `experiment.seeds`.
 
 Các artifact chính của mỗi seed:
 

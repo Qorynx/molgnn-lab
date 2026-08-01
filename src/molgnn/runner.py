@@ -88,12 +88,21 @@ class BenchmarkResult:
 
 
 @dataclass(frozen=True)
-class _SharedBenchmarkData:
+class _SharedDatasetData:
+    """Dataset state shared by every model and training seed."""
+
     dataset: CsvMoleculeDataset
-    splits: SplitIndices
-    scaler: TargetScalerState | None
     context: BuildContext
     metadata: Mapping[str, object]
+
+
+@dataclass(frozen=True)
+class _SeedSplitData:
+    """One reproducible split and training-target scaler for a run seed."""
+
+    split_seed: int | None
+    splits: SplitIndices
+    scaler: TargetScalerState | None
     split_records: tuple[Mapping[str, object], ...]
 
 
@@ -108,22 +117,25 @@ class _ResolvedModelPlan:
 def run_benchmark(config: ResolvedConfig) -> BenchmarkResult:
     """Run selected models in model-outer, seed-inner order.
 
-    Dataset loading, split creation, and target-scaler fitting happen once.
-    Model-specific transformed samples are prepared once and reused by every
-    seed for that model. Failures are returned instead of aborting later models.
+    Dataset loading happens once. Split/scaler state is reused according to the
+    configured split-seed policy, while model-specific transformed samples are
+    prepared once and reused by every seed for that model. Failures are returned
+    instead of aborting later models.
     """
     register_builtin_models()
     register_builtin_transforms()
     specs = resolve_benchmark_models(config.models)
     _validate_selected_overrides(config, specs)
-    shared = _prepare_shared_data(config)
+    shared = _prepare_shared_dataset(config)
+    seed_splits = _prepare_seed_splits(config, shared, config.experiment.seeds)
+    preflight_split = seed_splits[config.experiment.seeds[0]]
 
     plans: list[_ResolvedModelPlan] = []
     failures: list[RunFailure] = []
     for spec in specs:
         try:
             plan = _resolve_model_plan(config, spec, shared.context)
-            _preflight_model(plan, shared, plan.graph_transform)
+            _preflight_model(plan, shared, preflight_split, plan.graph_transform)
         except Exception as exc:
             failures.extend(
                 _failures_for_model(
@@ -157,6 +169,7 @@ def run_benchmark(config: ResolvedConfig) -> BenchmarkResult:
 
         try:
             for seed in config.experiment.seeds:
+                seed_split = seed_splits[seed]
                 resolved_run = ResolvedModelRun(
                     model_name=plan.spec.name,
                     parameters=plan.parameters,
@@ -177,6 +190,7 @@ def run_benchmark(config: ResolvedConfig) -> BenchmarkResult:
                         resolved_run,
                         prepared,
                         shared,
+                        seed_split,
                         paths,
                     )
                 except Exception as exc:
@@ -228,11 +242,12 @@ def _run_legacy_experiments(
 ) -> tuple[Path, ...]:
     register_builtin_models()
     register_builtin_transforms()
-    shared = _prepare_shared_data(
+    shared = _prepare_shared_dataset(
         config,
         featurizer=featurizer,
         training_strategy=training_strategy,
     )
+    seed_splits = _prepare_seed_splits(config, shared, seeds)
     spec = get_model_spec(config.model.name)
     plan = _resolve_model_plan(
         config,
@@ -245,7 +260,7 @@ def _run_legacy_experiments(
         if featurizer is None
         else _effective_graph_transform(plan, shared.dataset)
     )
-    _preflight_model(plan, shared, graph_transform)
+    _preflight_model(plan, shared, seed_splits[seeds[0]], graph_transform)
     prepared = prepare_model_samples(shared.dataset, graph_transform)
     completed: list[Path] = []
     summary_rows: list[dict[str, object]] = []
@@ -253,6 +268,7 @@ def _run_legacy_experiments(
 
     try:
         for seed in seeds:
+            seed_split = seed_splits[seed]
             resolved_run = ResolvedModelRun(
                 model_name=spec.name,
                 parameters=plan.parameters,
@@ -277,12 +293,14 @@ def _run_legacy_experiments(
                     resolved_run,
                     prepared,
                     shared,
+                    seed_split,
                     paths,
                     training_strategy=training_strategy,
                 )
             except Exception as exc:
                 failed_row: dict[str, object] = {
                     "seed": seed,
+                    "split_seed": seed_split.split_seed,
                     "status": "failed",
                     "error_type": type(exc).__name__,
                     "error_message": str(exc)[:500],
@@ -291,7 +309,7 @@ def _run_legacy_experiments(
                 summary_rows.append(failed_row)
             else:
                 completed.append(run_dir)
-                summary_rows.append(_summary_row(run_dir, seed))
+                summary_rows.append(_summary_row(run_dir, seed, seed_split.split_seed))
             finally:
                 _cleanup_resources(plan.training.device)
     finally:
@@ -315,12 +333,12 @@ def _run_legacy_experiments(
     return tuple(completed)
 
 
-def _prepare_shared_data(
+def _prepare_shared_dataset(
     config: ResolvedConfig,
     *,
     featurizer: LoadedHook | None = None,
     training_strategy: LoadedHook | None = None,
-) -> _SharedBenchmarkData:
+) -> _SharedDatasetData:
     dataset = CsvMoleculeDataset(
         config.data.path,
         smiles_column=config.data.smiles_column,
@@ -336,15 +354,6 @@ def _prepare_shared_data(
         f"dataset: valid={dataset.summary.valid_rows} "
         f"skipped={dataset.summary.skipped_invalid_smiles}"
     )
-    split_seed = config.experiment.seeds[0]
-    splits = make_split(dataset, config.data, split_seed)
-    print(
-        f"split: train={len(splits.train)} validation={len(splits.validation)} "
-        f"test={len(splits.test)}"
-    )
-    scaler: TargetScalerState | None = None
-    if config.task.type == "regression" and config.task.target_scaling:
-        scaler = fit_target_scaler(dataset, splits.train)
     schema = dataset.feature_schema
     context = BuildContext(
         atom_dim=schema.atom_dim,
@@ -371,14 +380,65 @@ def _prepare_shared_data(
     }
     if hook_references:
         metadata["runtime_hooks"] = hook_references
-    records = tuple(dict(row) for row in split_rows(splits, dataset))
-    return _SharedBenchmarkData(
+    return _SharedDatasetData(
         dataset=dataset,
-        splits=splits,
-        scaler=scaler,
         context=context,
         metadata=metadata,
-        split_records=records,
+    )
+
+
+def _prepare_seed_splits(
+    config: ResolvedConfig,
+    shared: _SharedDatasetData,
+    run_seeds: Sequence[int],
+) -> dict[int, _SeedSplitData]:
+    """Create one split/scaler state per effective split seed and reuse it."""
+
+    cached: dict[int | None, _SeedSplitData] = {}
+    resolved: dict[int, _SeedSplitData] = {}
+    for run_seed in run_seeds:
+        split_seed = _resolve_split_seed(config, run_seed)
+        split_data = cached.get(split_seed)
+        if split_data is None:
+            split_data = _prepare_seed_split(config, shared, run_seed, split_seed)
+            cached[split_seed] = split_data
+        resolved[run_seed] = split_data
+    return resolved
+
+
+def _resolve_split_seed(config: ResolvedConfig, run_seed: int) -> int | None:
+    """Return the split RNG seed, or ``None`` for a fixed predefined split."""
+
+    if config.data.split == "predefined":
+        return None
+    if config.data.split_seed_mode == "first_experiment_seed":
+        return config.experiment.seeds[0]
+    return run_seed
+
+
+def _prepare_seed_split(
+    config: ResolvedConfig,
+    shared: _SharedDatasetData,
+    run_seed: int,
+    split_seed: int | None,
+) -> _SeedSplitData:
+    """Build one validated partition and train-only scaler for a run seed."""
+
+    effective_seed = run_seed if split_seed is None else split_seed
+    splits = make_split(shared.dataset, config.data, effective_seed)
+    split_label = "predefined" if split_seed is None else str(split_seed)
+    print(
+        f"split (seed={split_label}): train={len(splits.train)} "
+        f"validation={len(splits.validation)} test={len(splits.test)}"
+    )
+    scaler: TargetScalerState | None = None
+    if config.task.type == "regression" and config.task.target_scaling:
+        scaler = fit_target_scaler(shared.dataset, splits.train)
+    return _SeedSplitData(
+        split_seed=split_seed,
+        splits=splits,
+        scaler=scaler,
+        split_records=tuple(dict(row) for row in split_rows(splits, shared.dataset)),
     )
 
 
@@ -407,12 +467,15 @@ def _resolve_model_plan(
 
 def _preflight_model(
     plan: _ResolvedModelPlan,
-    shared: _SharedBenchmarkData,
+    shared: _SharedDatasetData,
+    seed_split: _SeedSplitData,
     graph_transform: GraphTransform | None,
 ) -> None:
     try:
-        representative_count = min(plan.training.batch_size, len(shared.splits.train))
-        indices = shared.splits.train[:representative_count]
+        representative_count = min(
+            plan.training.batch_size, len(seed_split.splits.train)
+        )
+        indices = seed_split.splits.train[:representative_count]
         samples = []
         for index in indices:
             sample = shared.dataset[index]
@@ -503,7 +566,8 @@ def _run_model_seed(
     model_spec: ModelSpec,
     resolved_run: ResolvedModelRun,
     prepared: PreparedDataset,
-    shared: _SharedBenchmarkData,
+    shared: _SharedDatasetData,
+    seed_split: _SeedSplitData,
     paths: RunPaths,
     *,
     training_strategy: LoadedHook | None = None,
@@ -514,6 +578,7 @@ def _run_model_seed(
         _seed_everything(resolved_run.seed)
         serializable_config = to_serializable_dict(config)
         serializable_config.update(shared.metadata)
+        serializable_config["resolved_split_seed"] = seed_split.split_seed
         root_config = to_serializable_dict(
             replace(
                 config,
@@ -526,11 +591,11 @@ def _run_model_seed(
         root_config.update(shared.metadata)
         paths.write_experiment_config(root_config)
         paths.write_config(serializable_config)
-        paths.write_split_rows(shared.split_records)
+        paths.write_split_rows(seed_split.split_records)
 
         loaders = build_dataloaders(
             prepared,
-            shared.splits,
+            seed_split.splits,
             resolved_run.training.batch_size,
             resolved_run.seed,
             resolved_run.training.num_workers,
@@ -541,7 +606,7 @@ def _run_model_seed(
             resolved_run.parameters,
             shared.context,
         )
-        adapter = build_task_adapter(config.task, shared.scaler)
+        adapter = build_task_adapter(config.task, seed_split.scaler)
         resolved_device = resolve_device(resolved_run.training.device)
         print(f"model: {resolved_run.model_name} seed: {resolved_run.seed}")
         print(f"device: {resolved_device}")
@@ -586,7 +651,7 @@ def _run_model_seed(
             resolved_config=serializable_config,
             feature_schema_version=schema_version,
             target_scaler_state=(
-                None if shared.scaler is None else shared.scaler.to_dict()
+                None if seed_split.scaler is None else seed_split.scaler.to_dict()
             ),
         )
         last_record = fit_result.history[-1]
@@ -605,7 +670,7 @@ def _run_model_seed(
             resolved_config=serializable_config,
             feature_schema_version=schema_version,
             target_scaler_state=(
-                None if shared.scaler is None else shared.scaler.to_dict()
+                None if seed_split.scaler is None else seed_split.scaler.to_dict()
             ),
             rng_state=_rng_state(),
         )
@@ -761,14 +826,22 @@ def _rng_state() -> dict[str, object]:
     }
 
 
-def _summary_row(path: Path, seed: int) -> dict[str, object]:
+def _summary_row(
+    path: Path,
+    seed: int,
+    split_seed: int | None,
+) -> dict[str, object]:
     test_history = path / "test_history.csv"
     with test_history.open(newline="", encoding="utf-8") as stream:
         rows = list(csv.DictReader(stream))
     if not rows:
         raise RunnerError(f"test history is empty for seed {seed}")
     row = rows[-1]
-    summary: dict[str, object] = {"seed": seed, "status": "completed"}
+    summary: dict[str, object] = {
+        "seed": seed,
+        "split_seed": split_seed,
+        "status": "completed",
+    }
     for key, value in row.items():
         if key in {"checkpoint_epoch", "sample_count"}:
             summary[key] = int(str(value))
@@ -791,7 +864,8 @@ def _aggregate_metrics(
             key
             for row in completed
             for key, value in row.items()
-            if key not in {"seed", "status", "checkpoint_epoch", "sample_count"}
+            if key
+            not in {"seed", "split_seed", "status", "checkpoint_epoch", "sample_count"}
             and isinstance(value, (int, float))
             and math.isfinite(float(value))
         }
