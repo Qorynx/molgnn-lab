@@ -75,6 +75,17 @@ Huấn luyện:
 molgnn train --config configs/example.yaml
 ```
 
+Chạy benchmark nhiều model:
+
+```bash
+molgnn benchmark --config benchmark.yaml
+```
+
+Lệnh `benchmark` dùng danh sách `models` trong YAML và chạy từng model trên mọi
+seed đã khai báo. Nếu bỏ `models`, nó chạy toàn bộ built-in model có benchmark
+được bật. `molgnn train` vẫn giữ luồng single-model tương thích ngược và hỗ trợ
+hai runtime hook cục bộ.
+
 Kết quả được ghi vào `runs/example_gcn_regression/`. Thư mục output, checkpoint và
 dataset local đều được Git bỏ qua.
 
@@ -84,6 +95,7 @@ dataset local đều được Git bỏ qua.
 - `attentivefp`
 - `dmpnn`
 - `hignn`
+- `himnet`
 - `molecular_graph_embedding`
 - `trimnet_2020`
 
@@ -117,6 +129,7 @@ graph của model.
 | `attentivefp`, `trimnet_2020` | `x`, `edge_index`, `edge_attr`, `batch` | Không có |
 | `dmpnn` | `x`, `edge_index`, `edge_attr`, `reverse_edge_index`, `batch` | `directed_edges` thêm reverse-edge map |
 | `hignn` | `x`, `edge_index`, `edge_attr`, `brics_edge_index`, `brics_edge_attr`, `atom_to_fragment`, `batch` | `brics_fragments` thêm BRICS fragment view |
+| `himnet` | `himnet_x`, `himnet_edge_index`, `himnet_edge_attr`, `himnet_reverse_edge_index`, `himnet_node_batch`, `himnet_node_type`, `himnet_fp` | `himnet_inputs` thêm unified hierarchy và fingerprint views |
 | `molecular_graph_embedding` | `mge_x`, `edge_index`, `mge_edge_attr`, `batch` | `coley_2017_features` thêm feature tensors cho MGE |
 
 Điểm chung là `edge_index` và `batch` luôn mô tả graph batch thực tế; tên và

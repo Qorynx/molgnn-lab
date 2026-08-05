@@ -55,6 +55,28 @@ def test_describe_model_json_exposes_only_the_runtime_contract(capsys) -> None:
     }
 
 
+def test_describe_model_reports_himnet_contract(capsys) -> None:
+    exit_code = main(["describe-model", "--model", "himnet", "--format", "json"])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 0
+    assert captured.err == ""
+    assert payload["name"] == "himnet"
+    assert payload["required_batch_fields"] == [
+        "himnet_x",
+        "himnet_edge_index",
+        "himnet_edge_attr",
+        "himnet_reverse_edge_index",
+        "himnet_node_batch",
+        "himnet_node_type",
+        "himnet_fp",
+    ]
+    assert payload["graph_transform_name"] == "himnet_inputs"
+    assert payload["prediction_reducer_name"] == "identity"
+    assert payload["benchmark_order"] == 70
+
+
 def test_describe_model_reports_unknown_names_without_a_traceback(capsys) -> None:
     exit_code = main(["describe-model", "--model", "missing_model"])
 

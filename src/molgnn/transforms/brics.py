@@ -1,8 +1,9 @@
-"""BRICS-pruned molecular graph view required by HiGNN."""
+"""BRICS-derived molecular graph views used by hierarchical architectures."""
 
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import dataclass
 
 import torch
 from rdkit import Chem
@@ -13,8 +14,47 @@ from ..data import MolecularData
 from .base import TransformError
 
 
+@dataclass(frozen=True)
+class _BRICSPartition:
+    """Validated BRICS cut information for one canonical molecular sample.
+
+    This remains an internal helper: the public transform contracts are still
+    ``brics_fragments`` and ``himnet_inputs``.  Keeping the validation and
+    component assignment here prevents the two hierarchical transforms from
+    drifting apart while preserving HiGNN's existing output semantics.
+    """
+
+    mol: Chem.Mol
+    cut_bonds: frozenset[frozenset[int]]
+    boundary_bonds: tuple[tuple[int, int], ...]
+    atom_to_fragment: Tensor
+
+
 def add_brics_fragments(data: MolecularData) -> MolecularData:
     """Clone a canonical graph and attach its BRICS fragment view."""
+
+    partition = _resolve_brics_partition(data)
+    edge_index = getattr(data, "edge_index")
+    edge_attr = getattr(data, "edge_attr")
+    assert isinstance(edge_index, Tensor)
+    assert isinstance(edge_attr, Tensor)
+
+    actual_edges = [tuple(pair) for pair in edge_index.detach().cpu().t().tolist()]
+    keep = torch.tensor(
+        [frozenset(edge) not in partition.cut_bonds for edge in actual_edges],
+        dtype=torch.bool,
+        device=edge_index.device,
+    )
+
+    transformed = data.clone()
+    transformed.brics_edge_index = edge_index[:, keep].clone()
+    transformed.brics_edge_attr = edge_attr[keep.to(edge_attr.device)].clone()
+    transformed.atom_to_fragment = partition.atom_to_fragment
+    return transformed
+
+
+def _resolve_brics_partition(data: MolecularData) -> _BRICSPartition:
+    """Validate canonical graph metadata and derive deterministic BRICS parts."""
 
     smiles = getattr(data, "smiles", None)
     if not isinstance(smiles, str) or not smiles:
@@ -47,7 +87,7 @@ def add_brics_fragments(data: MolecularData) -> MolecularData:
             (bond.GetEndAtomIdx(), bond.GetBeginAtomIdx()),
         )
     ]
-    actual_edges = [tuple(pair) for pair in edge_index.t().tolist()]
+    actual_edges = [tuple(pair) for pair in edge_index.detach().cpu().t().tolist()]
     if Counter(actual_edges) != Counter(expected_edges):
         raise TransformError(
             f"sample {_sample_id(data)} edge_index does not match source SMILES connectivity"
@@ -62,21 +102,20 @@ def add_brics_fragments(data: MolecularData) -> MolecularData:
                 f"sample {_sample_id(data)} has mismatched features for edge {source}<->{target}"
             )
 
-    cut_bonds = {
-        frozenset((source, target)) for (source, target), _labels in BRICS.FindBRICSBonds(mol)
-    }
-    keep = torch.tensor(
-        [frozenset(edge) not in cut_bonds for edge in actual_edges],
-        dtype=torch.bool,
-        device=edge_index.device,
+    boundary_bonds = tuple(
+        sorted(
+            tuple(sorted((source, target)))
+            for (source, target), _labels in BRICS.FindBRICSBonds(mol)
+        )
     )
-    atom_to_fragment = _connected_components(mol, cut_bonds, device=x.device)
-
-    transformed = data.clone()
-    transformed.brics_edge_index = edge_index[:, keep].clone()
-    transformed.brics_edge_attr = edge_attr[keep.to(edge_attr.device)].clone()
-    transformed.atom_to_fragment = atom_to_fragment
-    return transformed
+    cut_bonds = frozenset(frozenset(pair) for pair in boundary_bonds)
+    atom_to_fragment = _connected_components(mol, set(cut_bonds), device=x.device)
+    return _BRICSPartition(
+        mol=mol,
+        cut_bonds=cut_bonds,
+        boundary_bonds=boundary_bonds,
+        atom_to_fragment=atom_to_fragment,
+    )
 
 
 def _connected_components(

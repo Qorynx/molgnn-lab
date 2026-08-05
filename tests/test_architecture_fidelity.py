@@ -5,9 +5,10 @@ from torch_geometric.loader import DataLoader
 
 from molgnn.featurizer import featurize_smiles
 from molgnn.models.hignn_2023 import HiGNN
+from molgnn.models.himnet_2026 import HimNet
 from molgnn.models.registration import register_builtin_models
 from molgnn.registry import available_models, get_model_spec
-from molgnn.transforms import add_brics_fragments
+from molgnn.transforms import add_brics_fragments, add_himnet_inputs
 
 
 def _hignn_batch():
@@ -28,6 +29,7 @@ def test_builtin_models_expose_runtime_input_contracts() -> None:
         "attentivefp",
         "dmpnn",
         "hignn",
+        "himnet",
         "molecular_graph_embedding",
         "trimnet_2020",
     }
@@ -75,3 +77,28 @@ def test_hignn_cross_gat_shares_one_projection_and_keeps_bipartite_fusion() -> N
     assert source_shape == (num_fragments, model.hidden_dim)
     assert target_shape == (batch.num_graphs, model.hidden_dim)
     assert size == (num_fragments, batch.num_graphs)
+
+
+def test_himnet_exposes_source_backed_hierarchy_and_fusion_invariants() -> None:
+    samples = [
+        add_himnet_inputs(
+            featurize_smiles(smiles, targets=[0.0], target_mask=[True], sample_id=index)
+        )
+        for index, smiles in enumerate(("CC(=O)NCC", "C"))
+    ]
+    batch = next(iter(DataLoader(samples, batch_size=2)))
+    model = HimNet(
+        atom_dim=153,
+        bond_dim=14,
+        hidden_dim=8,
+        depth=2,
+        dropout=0.0,
+        interaction_heads=2,
+        fusion_heads=2,
+    ).eval()
+
+    assert model.directed_encoder.W_alpha.out_features == 1
+    assert model.directed_encoder.edge_attention.out_proj.__class__.__name__ == "Identity"
+    assert model.interaction_encoder.cross_attention.num_heads == 2
+    assert model.feature_fusion.num_heads == 2
+    assert model(batch).shape == (2, 1)

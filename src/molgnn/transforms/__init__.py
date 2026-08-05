@@ -6,6 +6,7 @@ from .base import GraphTransform, TransformError
 from .brics import add_brics_fragments
 from .coley_2017 import add_coley_2017_features
 from .directed_edges import add_reverse_edge_index
+from .himnet import add_himnet_inputs
 
 _TRANSFORMS: dict[str, GraphTransform] = {}
 
@@ -30,6 +31,8 @@ def register_builtin_transforms() -> None:
         register_graph_transform("coley_2017_features", add_coley_2017_features)
     if "brics_fragments" not in _TRANSFORMS:
         register_graph_transform("brics_fragments", add_brics_fragments)
+    if "himnet_inputs" not in _TRANSFORMS:
+        register_graph_transform("himnet_inputs", add_himnet_inputs)
 
 
 def get_graph_transform(name: str | None) -> GraphTransform | None:
@@ -58,6 +61,7 @@ __all__ = [
     "TransformError",
     "add_brics_fragments",
     "add_coley_2017_features",
+    "add_himnet_inputs",
     "add_reverse_edge_index",
     "get_graph_transform",
     "register_builtin_transforms",

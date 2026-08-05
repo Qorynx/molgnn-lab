@@ -13,11 +13,13 @@ from molgnn.models.contracts import validate_batched_molecular_graph
 from molgnn.models.dmpnn_2024 import DMPNN
 from molgnn.models.gcn_baseline import GCNBaseline
 from molgnn.models.hignn_2023 import HiGNN
+from molgnn.models.himnet_2026 import HimNet
 from molgnn.models.molecular_graph_embedding_2017 import MolecularGraphEmbedding
 from molgnn.models.trimnet_2020 import TrimNet2020
 from molgnn.transforms import (
     add_brics_fragments,
     add_coley_2017_features,
+    add_himnet_inputs,
     add_reverse_edge_index,
 )
 
@@ -206,4 +208,28 @@ def test_hignn_also_rejects_cross_graph_brics_edges() -> None:
     with pytest.raises(
         ValueError, match=r"brics_edge_index must not connect different graphs"
     ):
+        model(batch)
+
+
+def test_himnet_accepts_its_prepared_contract_and_rejects_cross_graph_edges() -> None:
+    samples = [
+        add_himnet_inputs(sample)
+        for sample in _canonical_batch("CC", "CC").to_data_list()
+    ]
+    batch = Batch.from_data_list(list[BaseData](samples))
+    model = HimNet(
+        153,
+        14,
+        hidden_dim=8,
+        depth=1,
+        interaction_heads=2,
+        fusion_heads=2,
+        dropout=0.0,
+    )
+    assert model(batch).shape == (2, 1)
+
+    first_nodes = samples[0].himnet_x.shape[0]
+    batch.himnet_edge_index = batch.himnet_edge_index.clone()
+    batch.himnet_edge_index[1, 0] = first_nodes
+    with pytest.raises(ValueError, match=r"himnet_edge_index must not connect different graphs"):
         model(batch)

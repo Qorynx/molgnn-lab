@@ -42,7 +42,7 @@ class DataConfig:
 
 @dataclass(frozen=True)
 class ModelConfig:
-    """Temporary single-model view retained until the benchmark runner lands."""
+    """Compatibility single-model view retained for the ``train`` command."""
 
     name: str
     parameters: Mapping[str, object]

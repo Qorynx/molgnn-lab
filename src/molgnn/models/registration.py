@@ -7,6 +7,7 @@ from .attentivefp_2020 import AttentiveFP
 from .dmpnn_2024 import DMPNN
 from .gcn_baseline import GCNBaseline
 from .hignn_2023 import HiGNN
+from .himnet_2026 import HimNet
 from .molecular_graph_embedding_2017 import MolecularGraphEmbedding
 from .trimnet_2020 import TrimNet2020
 
@@ -59,6 +60,14 @@ def register_builtin_models() -> None:
             prediction_reducer_name="identity",
             benchmark_order=60,
         )(TrimNet2020)
+    if "himnet" not in available_models():
+        register_model(
+            "himnet",
+            required_batch_fields=HimNet.required_batch_fields,
+            graph_transform_name="himnet_inputs",
+            prediction_reducer_name="identity",
+            benchmark_order=70,
+        )(HimNet)
 
 
 __all__ = ["register_builtin_models"]

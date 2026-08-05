@@ -51,6 +51,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     train_parser.set_defaults(handler=_train)
 
+    benchmark_parser = subparsers.add_parser(
+        "benchmark",
+        help="Run the selected multi-model benchmark from a YAML config.",
+    )
+    benchmark_parser.add_argument(
+        "--config", required=True, help="Path to YAML config."
+    )
+    benchmark_parser.set_defaults(handler=_benchmark)
+
     describe_parser = subparsers.add_parser(
         "describe-model",
         help="Show the runtime integration contract for one built-in model.",
@@ -70,9 +79,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _missing_config(args: argparse.Namespace) -> int:
+def _missing_config(args: argparse.Namespace, *, command: str) -> int:
     """Report a missing experiment configuration."""
-    print(f"Train error: config file does not exist: {args.config}", file=sys.stderr)
+    print(f"{command} error: config file does not exist: {args.config}", file=sys.stderr)
     return 2
 
 
@@ -84,7 +93,7 @@ def _train(args: argparse.Namespace) -> int:
 
     config_path = Path(args.config)
     if not config_path.exists():
-        return _missing_config(args)
+        return _missing_config(args, command="Train")
     try:
         config = load_config(config_path)
         featurizer_spec = getattr(args, "featurizer", None)
@@ -110,6 +119,33 @@ def _train(args: argparse.Namespace) -> int:
     for run_dir in run_dirs:
         print(f"Completed: {run_dir}")
     return 0
+
+
+def _benchmark(args: argparse.Namespace) -> int:
+    """Load one multi-model config and run its benchmark lifecycle."""
+
+    from .config import ConfigError, load_config
+    from .runner import run_benchmark
+
+    config_path = Path(args.config)
+    if not config_path.exists():
+        return _missing_config(args, command="Benchmark")
+    try:
+        result = run_benchmark(load_config(config_path))
+    except (ConfigError, ValueError, RuntimeError, OSError) as exc:
+        print(f"Benchmark error: {exc}", file=sys.stderr)
+        return 2
+
+    for run_dir in result.completed:
+        print(f"Completed: {run_dir}")
+    for failure in result.failed:
+        print(
+            "Failed: "
+            f"model={failure.model_name} seed={failure.seed} stage={failure.stage} "
+            f"{failure.error_type}: {failure.error_message}",
+            file=sys.stderr,
+        )
+    return 1 if result.failed else 0
 
 
 def _validate_config(args: argparse.Namespace) -> int:

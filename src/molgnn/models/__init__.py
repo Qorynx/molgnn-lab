@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from .hignn_2023 import FeatureAttention as FeatureAttention
     from .hignn_2023 import HiGNN as HiGNN
     from .hignn_2023 import HiGNNData as HiGNNData
+    from .himnet_2026 import HimNet as HimNet
+    from .himnet_2026 import HimNetData as HimNetData
     from .hignn_2023 import NTNConv as NTNConv
     from .molecular_graph_embedding_2017 import ColeyGraphConv as ColeyGraphConv
     from .molecular_graph_embedding_2017 import (
@@ -34,6 +36,8 @@ _EXPORTS = {
     "GCNBaseline": (".gcn_baseline", "GCNBaseline"),
     "HiGNN": (".hignn_2023", "HiGNN"),
     "HiGNNData": (".hignn_2023", "HiGNNData"),
+    "HimNet": (".himnet_2026", "HimNet"),
+    "HimNetData": (".himnet_2026", "HimNetData"),
     "MolecularGraphEmbedding": (
         ".molecular_graph_embedding_2017",
         "MolecularGraphEmbedding",
@@ -67,6 +71,8 @@ __all__ = (
     "GCNBaseline",
     "HiGNN",
     "HiGNNData",
+    "HimNet",
+    "HimNetData",
     "MolecularGraphEmbedding",
     "NTNConv",
     "TrimNet2020",
