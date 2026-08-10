@@ -5,6 +5,7 @@ from __future__ import annotations
 from ..registry import available_models, register_model
 from .attentivefp_2020 import AttentiveFP
 from .dmpnn_2024 import DMPNN
+from .fragnet_2026 import FragNet
 from .gcn_baseline import GCNBaseline
 from .hignn_2023 import HiGNN
 from .himnet_2026 import HimNet
@@ -68,6 +69,14 @@ def register_builtin_models() -> None:
             prediction_reducer_name="identity",
             benchmark_order=70,
         )(HimNet)
+    if "fragnet" not in available_models():
+        register_model(
+            "fragnet",
+            required_batch_fields=FragNet.required_batch_fields,
+            graph_transform_name="fragnet_inputs",
+            prediction_reducer_name="identity",
+            benchmark_order=80,
+        )(FragNet)
 
 
 __all__ = ["register_builtin_models"]
