@@ -13,6 +13,9 @@ tests/*
 !tests/test_model_input_contracts.py
 !tests/test_describe_model_cli.py
 !tests/test_cli_hooks.py
+!tests/test_mpnn_3d.py
+!tests/test_potentialnet.py
+!tests/test_registry.py
 uv.lock
 
 # Keep only the public example configuration
@@ -22,6 +25,8 @@ configs/*
 # Datasets and local data files
 data/
 datasets/
+!src/molgnn/datasets/
+!src/molgnn/datasets/**
 *.csv
 *.tsv
 *.parquet

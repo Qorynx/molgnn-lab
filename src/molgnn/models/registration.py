@@ -9,6 +9,8 @@ from .gcn_baseline import GCNBaseline
 from .hignn_2023 import HiGNN
 from .himnet_2026 import HimNet
 from .molecular_graph_embedding_2017 import MolecularGraphEmbedding
+from .mpnn_2017 import MPNN, MPNNDistanceBins3D
+from .potentialnet_2018 import PotentialNet
 from .trimnet_2020 import TrimNet2020
 
 
@@ -53,6 +55,27 @@ def register_builtin_models() -> None:
             prediction_reducer_name="identity",
             benchmark_order=40,
         )(HiGNN)
+    if "mpnn" not in available_models():
+        register_model(
+            "mpnn",
+            required_batch_fields=MPNN.required_batch_fields,
+            graph_transform_name="mpnn_edge_types",
+            prediction_reducer_name="identity",
+            benchmark_order=45,
+        )(MPNN)
+    if "mpnn_3d_distance_bins" not in available_models():
+        register_model(
+            "mpnn_3d_distance_bins",
+            required_batch_fields=MPNNDistanceBins3D.required_batch_fields,
+            graph_transform_name="mpnn_3d_distance_bins",
+            transform_output_fields=(
+                "mpnn_3d_edge_index",
+                "mpnn_3d_edge_type",
+            ),
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=46,
+        )(MPNNDistanceBins3D)
     if "trimnet_2020" not in available_models():
         register_model(
             "trimnet_2020",
@@ -68,6 +91,28 @@ def register_builtin_models() -> None:
             prediction_reducer_name="identity",
             benchmark_order=70,
         )(HimNet)
+    if "potentialnet" not in available_models():
+        register_model(
+            "potentialnet",
+            required_batch_fields=PotentialNet.required_batch_fields,
+            optional_batch_fields=(
+                "potentialnet_stage2_edge_index",
+                "potentialnet_stage2_edge_type",
+                "potentialnet_use_spatial",
+            ),
+            graph_transform_name="potentialnet_inputs",
+            transform_output_fields=(
+                "ligand_mask",
+                "potentialnet_bond_edge_index",
+                "potentialnet_bond_edge_type",
+                "potentialnet_stage2_edge_index",
+                "potentialnet_stage2_edge_type",
+                "potentialnet_use_spatial",
+            ),
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=80,
+        )(PotentialNet)
 
 
 __all__ = ["register_builtin_models"]

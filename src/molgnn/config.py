@@ -35,9 +35,13 @@ class DataConfig:
     split_ratios: tuple[float, float, float]
     split_column: str | None
     invalid_smiles: Literal["error", "skip"]
+    source: Literal["csv_smiles", "pdbbind_complex"] = "csv_smiles"
     split_seed_mode: Literal["first_experiment_seed", "per_experiment_seed"] = (
         "first_experiment_seed"
     )
+    ligand_path_column: str | None = None
+    protein_path_column: str | None = None
+    strip_hydrogens: bool = True
 
 
 @dataclass(frozen=True)
@@ -98,6 +102,7 @@ _SECTION_KEYS: dict[str, frozenset[str]] = {
     "data": frozenset(
         {
             "path",
+            "source",
             "smiles_column",
             "target_columns",
             "id_column",
@@ -106,6 +111,9 @@ _SECTION_KEYS: dict[str, frozenset[str]] = {
             "split_ratios",
             "split_column",
             "invalid_smiles",
+            "ligand_path_column",
+            "protein_path_column",
+            "strip_hydrogens",
         }
     ),
     "model": frozenset({"name", "parameters"}),
@@ -136,6 +144,7 @@ _DEFAULT_CONFIG: dict[str, Any] = {
     "experiment": {"name": "molgnn_experiment", "seed": 0, "output_dir": "runs"},
     "data": {
         "path": "data/data.csv",
+        "source": "csv_smiles",
         "smiles_column": "smiles",
         "target_columns": ["target"],
         "id_column": None,
@@ -144,6 +153,9 @@ _DEFAULT_CONFIG: dict[str, Any] = {
         "split_ratios": [0.8, 0.1, 0.1],
         "split_column": None,
         "invalid_smiles": "error",
+        "ligand_path_column": None,
+        "protein_path_column": None,
+        "strip_hydrogens": True,
     },
     "training": {
         "epochs": 200,
@@ -596,6 +608,9 @@ def load_config(path: Path) -> ResolvedConfig:
     )
 
     target_columns = _strings(data_raw["target_columns"], field="data.target_columns")
+    source = _string(data_raw["source"], field="data.source")
+    if source not in {"csv_smiles", "pdbbind_complex"}:
+        raise ConfigError("'data.source' must be csv_smiles or pdbbind_complex")
     split = _string(data_raw["split"], field="data.split")
     if split not in {"random", "scaffold", "predefined"}:
         raise ConfigError("'data.split' must be random, scaffold, or predefined")
@@ -615,6 +630,27 @@ def load_config(path: Path) -> ResolvedConfig:
     invalid_smiles = _string(data_raw["invalid_smiles"], field="data.invalid_smiles")
     if invalid_smiles not in {"error", "skip"}:
         raise ConfigError("'data.invalid_smiles' must be error or skip")
+    ligand_path_column = _optional_string(
+        data_raw.get("ligand_path_column"), field="data.ligand_path_column"
+    )
+    protein_path_column = _optional_string(
+        data_raw.get("protein_path_column"), field="data.protein_path_column"
+    )
+    strip_hydrogens = data_raw.get("strip_hydrogens", True)
+    if not isinstance(strip_hydrogens, bool):
+        raise ConfigError("'data.strip_hydrogens' must be a boolean")
+    if source == "pdbbind_complex":
+        missing_columns = [
+            name
+            for name, value in (
+                ("data.ligand_path_column", ligand_path_column),
+                ("data.protein_path_column", protein_path_column),
+            )
+            if value is None
+        ]
+        if missing_columns:
+            names = ", ".join(missing_columns)
+            raise ConfigError(f"pdbbind_complex requires {names}")
 
     data = DataConfig(
         path=_path(data_raw["path"], field="data.path", config_dir=config_path.parent),
@@ -628,6 +664,10 @@ def load_config(path: Path) -> ResolvedConfig:
         split_ratios=_ratios(data_raw["split_ratios"]),
         split_column=split_column,
         invalid_smiles=cast(Literal["error", "skip"], invalid_smiles),
+        source=cast(Literal["csv_smiles", "pdbbind_complex"], source),
+        ligand_path_column=ligand_path_column,
+        protein_path_column=protein_path_column,
+        strip_hydrogens=strip_hydrogens,
     )
 
     training = _training_config_from_mapping(training_raw)

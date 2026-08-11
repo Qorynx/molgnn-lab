@@ -5,6 +5,7 @@ experiment:
 
 data:
   path: ../data/dataset.csv
+  source: csv_smiles
   smiles_column: smiles
   target_columns: [target]
   id_column: null

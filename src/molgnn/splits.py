@@ -6,15 +6,31 @@ import math
 import random
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Protocol
 
 import numpy as np
 
 from .config import DataConfig
-from .dataset import CsvMoleculeDataset
+from .dataset import MolecularDataset
 
 
 class SplitError(ValueError):
     """Raised when a split cannot satisfy the dataset split contract."""
+
+
+class SplitDataset(MolecularDataset, Protocol):
+    """Dataset metadata required by the shared split and split-artifact path."""
+
+    @property
+    def sample_ids(self) -> tuple[int, ...]: ...
+
+    @property
+    def smiles(self) -> tuple[str, ...]: ...
+
+    @property
+    def split_labels(self) -> tuple[str | None, ...] | None: ...
+
+    def sample_id_for_index(self, index: int) -> int: ...
 
 
 @dataclass(frozen=True)
@@ -27,7 +43,7 @@ class SplitIndices:
 
 
 def random_split(
-    dataset: CsvMoleculeDataset,
+    dataset: MolecularDataset,
     split_ratios: Sequence[float],
     seed: int,
 ) -> SplitIndices:
@@ -45,7 +61,7 @@ def random_split(
 
 
 def scaffold_split(
-    dataset: CsvMoleculeDataset,
+    dataset: SplitDataset,
     split_ratios: Sequence[float],
     seed: int | None = None,
 ) -> SplitIndices:
@@ -99,7 +115,7 @@ def scaffold_split(
 
 
 def predefined_split(
-    dataset: CsvMoleculeDataset,
+    dataset: SplitDataset,
     assignments: Sequence[str] | Mapping[int, str] | None = None,
 ) -> SplitIndices:
     """Build a split from explicit train/validation/test labels.
@@ -123,7 +139,7 @@ def predefined_split(
     return split
 
 
-def make_split(dataset: CsvMoleculeDataset, config: DataConfig, seed: int) -> SplitIndices:
+def make_split(dataset: SplitDataset, config: DataConfig, seed: int) -> SplitIndices:
     """Dispatch to the split strategy declared by :class:`DataConfig`."""
     if config.split == "random":
         return random_split(dataset, config.split_ratios, seed)
@@ -134,7 +150,7 @@ def make_split(dataset: CsvMoleculeDataset, config: DataConfig, seed: int) -> Sp
     raise SplitError(f"Unsupported split strategy: {config.split!r}")
 
 
-def validate_split_indices(split: SplitIndices, dataset: CsvMoleculeDataset | int) -> None:
+def validate_split_indices(split: SplitIndices, dataset: MolecularDataset | int) -> None:
     """Validate bounds, coverage, uniqueness and non-empty partitions."""
     if not isinstance(split, SplitIndices):
         raise SplitError("split must be a SplitIndices instance")
@@ -171,7 +187,7 @@ def validate_split_indices(split: SplitIndices, dataset: CsvMoleculeDataset | in
         raise SplitError(f"split does not cover all dataset indices; missing {missing}")
 
 
-def split_rows(split: SplitIndices, dataset: CsvMoleculeDataset) -> list[dict[str, int | str]]:
+def split_rows(split: SplitIndices, dataset: SplitDataset) -> list[dict[str, int | str]]:
     """Return stable per-sample split records for artifact writers."""
     validate_split_indices(split, dataset)
     labels: dict[int, str] = {}
@@ -192,7 +208,7 @@ def split_rows(split: SplitIndices, dataset: CsvMoleculeDataset) -> list[dict[st
 
 
 def _resolve_assignments(
-    dataset: CsvMoleculeDataset,
+    dataset: SplitDataset,
     assignments: Sequence[str] | Mapping[int, str] | None,
 ) -> tuple[str, ...]:
     if assignments is None:
@@ -286,6 +302,7 @@ def _split_sizes(dataset_size: int, split_ratios: Sequence[float]) -> tuple[int,
 
 __all__ = [
     "SplitError",
+    "SplitDataset",
     "SplitIndices",
     "make_split",
     "predefined_split",

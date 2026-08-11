@@ -7,6 +7,8 @@ from .brics import add_brics_fragments
 from .coley_2017 import add_coley_2017_features
 from .directed_edges import add_reverse_edge_index
 from .himnet import add_himnet_inputs
+from .mpnn import add_mpnn_3d_distance_bins_inputs, add_mpnn_edge_types
+from .potentialnet import add_potentialnet_inputs
 
 _TRANSFORMS: dict[str, GraphTransform] = {}
 
@@ -29,10 +31,18 @@ def register_builtin_transforms() -> None:
         register_graph_transform("directed_edges", add_reverse_edge_index)
     if "coley_2017_features" not in _TRANSFORMS:
         register_graph_transform("coley_2017_features", add_coley_2017_features)
+    if "mpnn_edge_types" not in _TRANSFORMS:
+        register_graph_transform("mpnn_edge_types", add_mpnn_edge_types)
+    if "mpnn_3d_distance_bins" not in _TRANSFORMS:
+        register_graph_transform(
+            "mpnn_3d_distance_bins", add_mpnn_3d_distance_bins_inputs
+        )
     if "brics_fragments" not in _TRANSFORMS:
         register_graph_transform("brics_fragments", add_brics_fragments)
     if "himnet_inputs" not in _TRANSFORMS:
         register_graph_transform("himnet_inputs", add_himnet_inputs)
+    if "potentialnet_inputs" not in _TRANSFORMS:
+        register_graph_transform("potentialnet_inputs", add_potentialnet_inputs)
 
 
 def get_graph_transform(name: str | None) -> GraphTransform | None:
@@ -62,6 +72,9 @@ __all__ = [
     "add_brics_fragments",
     "add_coley_2017_features",
     "add_himnet_inputs",
+    "add_mpnn_3d_distance_bins_inputs",
+    "add_mpnn_edge_types",
+    "add_potentialnet_inputs",
     "add_reverse_edge_index",
     "get_graph_transform",
     "register_builtin_transforms",

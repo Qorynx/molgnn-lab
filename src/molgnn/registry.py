@@ -40,7 +40,9 @@ class ModelSpec:
         default_factory=lambda: MappingProxyType({})
     )
     required_batch_fields: tuple[str, ...] = ()
+    optional_batch_fields: tuple[str, ...] = ()
     graph_transform_name: str | None = None
+    transform_output_fields: tuple[str, ...] = ()
     prediction_reducer_name: str = "identity"
     benchmark_enabled: bool = True
     benchmark_order: int = 0
@@ -58,7 +60,9 @@ def register_model(
     *,
     default_parameters: Mapping[str, object] | None = None,
     required_batch_fields: Sequence[str] = (),
+    optional_batch_fields: Sequence[str] = (),
     graph_transform_name: str | None = None,
+    transform_output_fields: Sequence[str] = (),
     prediction_reducer_name: str = "identity",
     benchmark_enabled: bool = True,
     benchmark_order: int = 0,
@@ -68,8 +72,27 @@ def register_model(
     fields = tuple(_validate_name(field) for field in required_batch_fields)
     if len(set(fields)) != len(fields):
         raise RegistryError("required_batch_fields must not contain duplicates")
+    optional_fields = tuple(_validate_name(field) for field in optional_batch_fields)
+    if len(set(optional_fields)) != len(optional_fields):
+        raise RegistryError("optional_batch_fields must not contain duplicates")
+    overlapping_fields = set(fields) & set(optional_fields)
+    if overlapping_fields:
+        names = ", ".join(sorted(overlapping_fields))
+        raise RegistryError(
+            f"optional_batch_fields must not duplicate required_batch_fields: {names}"
+        )
     if graph_transform_name is not None:
         graph_transform_name = _validate_name(graph_transform_name)
+    transform_fields = tuple(_validate_name(field) for field in transform_output_fields)
+    if len(set(transform_fields)) != len(transform_fields):
+        raise RegistryError("transform_output_fields must not contain duplicates")
+    if set(transform_fields) - (set(fields) | set(optional_fields)):
+        raise RegistryError(
+            "transform_output_fields must be included in required_batch_fields "
+            "or optional_batch_fields"
+        )
+    if transform_fields and graph_transform_name is None:
+        raise RegistryError("transform_output_fields requires a graph_transform_name")
     prediction_reducer_name = _validate_name(prediction_reducer_name)
     defaults = _validated_parameter_mapping(
         default_parameters or {}, field="default_parameters"
@@ -95,7 +118,9 @@ def register_model(
             factory=factory,
             default_parameters=MappingProxyType(copy.deepcopy(defaults)),
             required_batch_fields=fields,
+            optional_batch_fields=optional_fields,
             graph_transform_name=graph_transform_name,
+            transform_output_fields=transform_fields,
             prediction_reducer_name=prediction_reducer_name,
             benchmark_enabled=benchmark_enabled,
             benchmark_order=benchmark_order,

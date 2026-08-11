@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import csv
 import gc
-import hashlib
 import math
 import random
 import time
@@ -28,13 +27,15 @@ from .config import (
     to_serializable_dict,
 )
 from .dataset import (
-    CsvMoleculeDataset,
     DataLoaders,
+    MolecularDataset,
     PreparedDataset,
     build_dataloaders,
     prepare_model_samples,
 )
+from .dataset_sources import DatasetSourceError, DatasetSourceResult, load_dataset
 from .evaluator import evaluate
+from .featurizer import FeatureSchema
 from .hooks import LoadedHook
 from .models.registration import register_builtin_models
 from .registry import (
@@ -91,7 +92,8 @@ class BenchmarkResult:
 class _SharedDatasetData:
     """Dataset state shared by every model and training seed."""
 
-    dataset: CsvMoleculeDataset
+    dataset: MolecularDataset
+    feature_schema: FeatureSchema
     context: BuildContext
     metadata: Mapping[str, object]
 
@@ -339,22 +341,24 @@ def _prepare_shared_dataset(
     featurizer: LoadedHook | None = None,
     training_strategy: LoadedHook | None = None,
 ) -> _SharedDatasetData:
-    dataset = CsvMoleculeDataset(
-        config.data.path,
-        smiles_column=config.data.smiles_column,
-        target_columns=config.data.target_columns,
-        task_type=config.task.type,
-        invalid_smiles=config.data.invalid_smiles,
-        id_column=config.data.id_column,
-        split_column=config.data.split_column,
-        featurizer=None if featurizer is None else featurizer.callback,
-        feature_schema_version=None if featurizer is None else featurizer.reference,
-    )
+    try:
+        source_result = load_dataset(
+            config.data,
+            config.task,
+            featurizer=None if featurizer is None else featurizer.callback,
+            feature_schema_version=None if featurizer is None else featurizer.reference,
+        )
+    except DatasetSourceError as exc:
+        raise RunnerError(
+            f"could not load dataset source '{config.data.source}': {exc}"
+        ) from exc
+    _validate_source_result_targets(source_result, config)
+    dataset = source_result.dataset
     print(
-        f"dataset: valid={dataset.summary.valid_rows} "
-        f"skipped={dataset.summary.skipped_invalid_smiles}"
+        f"dataset: valid={source_result.summary.valid_rows} "
+        f"skipped={source_result.summary.skipped_rows}"
     )
-    schema = dataset.feature_schema
+    schema = source_result.feature_schema
     context = BuildContext(
         atom_dim=schema.atom_dim,
         bond_dim=schema.bond_dim,
@@ -362,14 +366,13 @@ def _prepare_shared_dataset(
         feature_schema_version=schema.version,
     )
     metadata: dict[str, object] = {
-        "dataset_fingerprint": _dataset_fingerprint(dataset.path),
+        "dataset_source": config.data.source,
+        "dataset_fingerprint": source_result.fingerprint,
         "feature_schema_version": schema.version,
-        "dataset_summary": {
-            "source_rows": dataset.summary.source_rows,
-            "valid_rows": dataset.summary.valid_rows,
-            "skipped_invalid_smiles": dataset.summary.skipped_invalid_smiles,
-        },
+        "dataset_summary": source_result.summary.to_artifact_dict(),
     }
+    if source_result.metadata:
+        metadata["dataset_source_metadata"] = dict(source_result.metadata)
     hook_references = {
         name: hook.reference
         for name, hook in (
@@ -382,6 +385,7 @@ def _prepare_shared_dataset(
         metadata["runtime_hooks"] = hook_references
     return _SharedDatasetData(
         dataset=dataset,
+        feature_schema=schema,
         context=context,
         metadata=metadata,
     )
@@ -433,7 +437,12 @@ def _prepare_seed_split(
     )
     scaler: TargetScalerState | None = None
     if config.task.type == "regression" and config.task.target_scaling:
-        scaler = fit_target_scaler(shared.dataset, splits.train)
+        scaler = fit_target_scaler(
+            shared.dataset,
+            splits.train,
+            feature_schema=shared.feature_schema,
+            num_targets=shared.context.num_targets,
+        )
     return _SeedSplitData(
         split_seed=split_seed,
         splits=splits,
@@ -506,18 +515,30 @@ def _preflight_model(
 
 def _effective_graph_transform(
     plan: _ResolvedModelPlan,
-    dataset: CsvMoleculeDataset,
+    dataset: MolecularDataset,
 ) -> GraphTransform | None:
-    """Skip a bundled derivation when a custom featurizer already supplies it."""
+    """Skip a bundled derivation when a featurizer supplies its required output.
+
+    Optional model fields intentionally do not participate in this decision:
+    a valid prepared 2D PotentialNet sample, for example, has no spatial
+    Stage-2 inputs.  The selected model validates any optional-field grouping.
+    """
 
     transform = plan.graph_transform
     if transform is None:
         return None
-    derived_fields = tuple(
-        field
-        for field in plan.spec.required_batch_fields
-        if field not in {"x", "edge_index", "edge_attr", "batch"}
-    )
+    if plan.spec.transform_output_fields:
+        derived_fields = tuple(
+            field
+            for field in plan.spec.transform_output_fields
+            if field in plan.spec.required_batch_fields
+        )
+    else:
+        derived_fields = tuple(
+            field
+            for field in plan.spec.required_batch_fields
+            if field not in {"x", "edge_index", "edge_attr", "batch"}
+        )
     if not derived_fields:
         return transform
 
@@ -805,12 +826,16 @@ def _cleanup_resources(device: str) -> None:
         torch.cuda.empty_cache()
 
 
-def _dataset_fingerprint(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+def _validate_source_result_targets(
+    source_result: DatasetSourceResult,
+    config: ResolvedConfig,
+) -> None:
+    if source_result.summary.num_targets != config.num_targets:
+        raise RunnerError(
+            f"dataset source '{config.data.source}' reports "
+            f"{source_result.summary.num_targets} target(s), but config declares "
+            f"{config.num_targets}"
+        )
 
 
 def _rng_state() -> dict[str, object]:
