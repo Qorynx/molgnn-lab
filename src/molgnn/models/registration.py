@@ -12,6 +12,7 @@ from .himnet_2026 import HimNet
 from .molecular_graph_embedding_2017 import MolecularGraphEmbedding
 from .mpnn_2017 import MPNN, MPNNDistanceBins3D
 from .potentialnet_2018 import PotentialNet
+from .resgat_2024 import ResGAT
 from .trimnet_2020 import TrimNet2020
 
 
@@ -122,6 +123,13 @@ def register_builtin_models() -> None:
             benchmark_enabled=False,
             benchmark_order=80,
         )(PotentialNet)
+    if "resgat" not in available_models():
+        register_model(
+            "resgat",
+            required_batch_fields=ResGAT.required_batch_fields,
+            prediction_reducer_name="identity",
+            benchmark_order=75,
+        )(ResGAT)
 
 
 __all__ = ["register_builtin_models"]
