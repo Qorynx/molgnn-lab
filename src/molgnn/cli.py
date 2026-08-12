@@ -19,7 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the top-level CLI parser without importing heavy dependencies."""
     parser = argparse.ArgumentParser(
         prog="molgnn",
-        description="Architecture-only benchmark framework for 2D molecular GNNs.",
+        description="Architecture-only framework for molecular and complex GNNs.",
     )
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {__version__}"
@@ -81,7 +81,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _missing_config(args: argparse.Namespace, *, command: str) -> int:
     """Report a missing experiment configuration."""
-    print(f"{command} error: config file does not exist: {args.config}", file=sys.stderr)
+    print(
+        f"{command} error: config file does not exist: {args.config}", file=sys.stderr
+    )
     return 2
 
 
@@ -192,6 +194,7 @@ def _runtime_model_contract(spec: ModelSpec) -> dict[str, object]:
     return {
         "name": spec.name,
         "required_batch_fields": list(spec.required_batch_fields),
+        "optional_batch_fields": list(spec.optional_batch_fields),
         "graph_transform_name": spec.graph_transform_name,
         "prediction_reducer_name": spec.prediction_reducer_name,
         "benchmark_enabled": spec.benchmark_enabled,
@@ -205,6 +208,10 @@ def _format_model_description(description: dict[str, object]) -> str:
     lines.append(
         "Required batch fields: "
         + _format_inline_items(description["required_batch_fields"])
+    )
+    lines.append(
+        "Optional batch fields: "
+        + _format_inline_items(description["optional_batch_fields"])
     )
     lines.append(
         "Graph transform: "

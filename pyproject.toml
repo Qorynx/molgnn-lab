@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "molgnn-lab"
 version = "0.1.0"
-description = "Architecture-only benchmark framework for 2D molecular graph neural networks"
+description = "Architecture-only framework for 2D molecular and 3D complex graph neural networks"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [

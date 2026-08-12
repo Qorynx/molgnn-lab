@@ -6,6 +6,8 @@ from torch_geometric.loader import DataLoader
 from molgnn.featurizer import featurize_smiles
 from molgnn.models.hignn_2023 import HiGNN
 from molgnn.models.himnet_2026 import HimNet
+from molgnn.models.mpnn_2017 import MPNN, MPNNDistanceBins3D
+from molgnn.models.potentialnet_2018 import PotentialNet
 from molgnn.models.registration import register_builtin_models
 from molgnn.registry import available_models, get_model_spec
 from molgnn.transforms import add_brics_fragments, add_himnet_inputs
@@ -31,6 +33,9 @@ def test_builtin_models_expose_runtime_input_contracts() -> None:
         "hignn",
         "himnet",
         "molecular_graph_embedding",
+        "mpnn",
+        "mpnn_3d_distance_bins",
+        "potentialnet",
         "trimnet_2020",
     }
     assert expected <= set(available_models())
@@ -102,3 +107,102 @@ def test_himnet_exposes_source_backed_hierarchy_and_fusion_invariants() -> None:
     assert model.interaction_encoder.cross_attention.num_heads == 2
     assert model.feature_fusion.num_heads == 2
     assert model(batch).shape == (2, 1)
+
+
+def test_mpnn_exposes_tied_typed_message_and_custom_gru_topology() -> None:
+    model = MPNN(
+        atom_dim=3,
+        hidden_dim=4,
+        num_message_passing_steps=2,
+        readout_hidden_dim=4,
+        readout_num_hidden_layers=1,
+    )
+
+    assert model.message_function.incoming_weights.shape == (4, 4, 4)
+    assert model.message_function.outgoing_weights.shape == (4, 4, 4)
+    assert model.message_function.message_bias.shape == (8,)
+    assert model.update_function.message_update.bias is None
+    assert model.update_function.state_candidate.bias is None
+    assert model.graph_readout.gate_network.hidden_layers[0].in_features == 7
+    assert model.graph_readout.value_network.hidden_layers[0].in_features == 7
+
+
+def test_mpnn_distance_bin_variant_keeps_the_tied_mpnn_topology() -> None:
+    model = MPNNDistanceBins3D(
+        atom_dim=3,
+        hidden_dim=4,
+        num_message_passing_steps=2,
+        readout_hidden_dim=4,
+        readout_num_hidden_layers=1,
+    )
+
+    assert model.num_edge_types == 14
+    assert model.message_function.incoming_weights.shape == (14, 4, 4)
+    assert model.message_function.outgoing_weights.shape == (14, 4, 4)
+
+
+def test_mpnn_preserves_legacy_directional_messages_and_gru_update() -> None:
+    model = MPNN(
+        atom_dim=1,
+        hidden_dim=1,
+        num_edge_types=2,
+        num_message_passing_steps=1,
+        readout_hidden_dim=1,
+        readout_num_hidden_layers=1,
+    )
+    message = model.message_function
+    update = model.update_function
+    with torch.no_grad():
+        message.incoming_weights.copy_(torch.tensor([[[2.0]], [[-1.0]]]))
+        message.outgoing_weights.copy_(torch.tensor([[[0.5]], [[3.0]]]))
+        message.message_bias.copy_(torch.tensor([0.1, 0.2]))
+        update.message_update.weight.copy_(torch.tensor([[0.2, -0.1]]))
+        update.state_update.weight.copy_(torch.tensor([[0.3]]))
+        update.message_reset.weight.copy_(torch.tensor([[-0.4, 0.1]]))
+        update.state_reset.weight.copy_(torch.tensor([[0.2]]))
+        update.message_candidate.weight.copy_(torch.tensor([[0.5, 0.6]]))
+        update.state_candidate.weight.copy_(torch.tensor([[-0.7]]))
+
+    hidden = torch.tensor([[1.0], [4.0]])
+    edge_index = torch.tensor([[0, 1], [1, 0]])
+    edge_type = torch.tensor([0, 1])
+    messages = message(hidden, edge_index, edge_type)
+
+    assert torch.allclose(
+        messages,
+        torch.tensor([[-3.9, 2.2], [2.1, 3.2]]),
+        atol=1e-6,
+    )
+    gate = torch.sigmoid(
+        messages @ update.message_update.weight.T + hidden @ update.state_update.weight.T
+    )
+    reset = torch.sigmoid(
+        messages @ update.message_reset.weight.T + hidden @ update.state_reset.weight.T
+    )
+    candidate = torch.tanh(
+        messages @ update.message_candidate.weight.T
+        + (reset * hidden) @ update.state_candidate.weight.T
+    )
+    expected = (1 - gate) * hidden + gate * candidate
+
+    assert torch.allclose(update(hidden, messages), expected, atol=1e-6)
+
+
+def test_potentialnet_keeps_two_tied_stages_and_ligand_only_readout() -> None:
+    model = PotentialNet(
+        atom_dim=44,
+        bond_hidden_dim=48,
+        spatial_hidden_dim=48,
+        gather_dim=48,
+        num_bond_steps=2,
+        num_spatial_steps=3,
+        readout_hidden_dims=(16,),
+    )
+
+    assert len(model.stage1.message_network.networks) == 5
+    assert len(model.stage2.message_network.networks) == 9
+    assert model.stage1.num_steps == 2
+    assert model.stage2.num_steps == 3
+    assert model.stage1.gate.gate_network.in_features == 44 + 48
+    assert model.stage2.gate.gate_network.in_features == 48 + 48
+    assert model.readout.input_dim == 48

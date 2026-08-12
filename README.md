@@ -1,7 +1,7 @@
 # molgnn-lab
 
 `molgnn-lab` là framework dùng chung để huấn luyện và so sánh các mô hình graph neural
-network trên đồ thị phân tử 2D. Framework thống nhất quá trình đọc dữ liệu, tạo đặc
+network trên đồ thị phân tử 2D và complex ligand–pocket 3D. Framework thống nhất quá trình đọc dữ liệu, tạo đặc
 trưng nguyên tử/liên kết, chia dữ liệu, huấn luyện, đánh giá và lưu kết quả; kiến trúc
 mô hình được chọn bằng file YAML.
 
@@ -58,6 +58,30 @@ Với binary classification, target phải là `0` hoặc `1`. Có thể khai b�
 target trong `data.target_columns`. Tạo thư mục `data/` ở root và đặt dataset tại
 `data/dataset.csv`, hoặc sửa `data.path` trong config để trỏ tới vị trí khác.
 
+`PotentialNet` chạy trực tiếp với `data.source: csv_smiles` như các model 2D khác:
+khi sample không có `pos`, model chỉ chạy bond stage rồi readout trên toàn bộ atom.
+Nó cũng hỗ trợ `data.source: pdbbind_complex`; khi sample có tọa độ, model chạy thêm
+spatial stage trên complex. Với source này, `data.path` là CSV manifest cục bộ có
+đường dẫn ligand (`.sdf`, `.mol` hoặc `.mol2`) và pocket/protein (`.pdb`), các
+target, và tùy chọn `complex_id`/split. Đường dẫn tương đối được tính từ thư mục của
+manifest. Ví dụ phần `data` cho complex:
+
+```yaml
+data:
+  source: pdbbind_complex
+  path: ../data/pdbbind/manifest.csv
+  ligand_path_column: ligand_file
+  protein_path_column: pocket_file
+  id_column: complex_id
+  target_columns: [affinity]
+  split: predefined
+  split_column: split
+  strip_hydrogens: true
+```
+
+Không có cơ chế tự tải PDBBind. Manifest làm cho nguồn cấu trúc, split và atom order
+được khai báo rõ ràng và tái lập được.
+
 ## Chạy thử
 
 Repository cung cấp một config độc lập tại `configs/example.yaml`. Config này dùng
@@ -97,10 +121,22 @@ dataset local đều được Git bỏ qua.
 - `hignn`
 - `himnet`
 - `molecular_graph_embedding`
+- `mpnn`
+- `mpnn_3d_distance_bins`
+- `potentialnet`
 - `trimnet_2020`
 
 Tên mô hình được đặt tại `model.name`; tham số kiến trúc được truyền qua
 `model.parameters`.
+`potentialnet` được chọn tường minh qua `model.name` cho cả `csv_smiles` và
+`pdbbind_complex`. Nó vẫn nằm ngoài benchmark mặc định để benchmark không tự trộn
+ngữ nghĩa ligand-2D và complex-3D; chạy benchmark có model này cần khai báo danh sách
+`models` rõ ràng.
+`mpnn_3d_distance_bins` yêu cầu mỗi sample có `pos` float32 `[N, 3]` theo Å. Helper
+của nó tạo complete graph có hướng không self-loop, gồm bốn bond type và mười
+distance bin; vì vậy chi phí là O(N²). Model dùng được với `pdbbind_complex` hoặc
+custom featurizer cung cấp đủ tọa độ, và cũng nằm ngoài benchmark mặc định. Readout
+của MPNN này dùng toàn bộ atom trong graph, không áp dụng `ligand_mask`.
 
 ## Kiểm tra input contract
 
@@ -128,6 +164,9 @@ graph của model.
 | `gcn_baseline` | `x`, `edge_index`, `batch` | Không có |
 | `attentivefp`, `trimnet_2020` | `x`, `edge_index`, `edge_attr`, `batch` | Không có |
 | `dmpnn` | `x`, `edge_index`, `edge_attr`, `reverse_edge_index`, `batch` | `directed_edges` thêm reverse-edge map |
+| `mpnn` | `x`, `edge_index`, `mpnn_edge_type`, `batch` | `mpnn_edge_types` thêm nhãn bond-type 2D |
+| `mpnn_3d_distance_bins` | `x`, `mpnn_3d_edge_index`, `mpnn_3d_edge_type`, `batch` | `mpnn_3d_distance_bins` cần `pos` float32 `[N, 3]`, tạo all-pairs edge view với 4 bond type và 10 distance bin |
+| `potentialnet` | Bắt buộc: `x`, `potentialnet_bond_edge_index`, `potentialnet_bond_edge_type`, `ligand_mask`, `batch`. Tùy chọn (đi cùng nhau): `potentialnet_stage2_edge_index`, `potentialnet_stage2_edge_type`, `potentialnet_use_spatial` | `potentialnet_inputs` luôn tạo typed covalent graph; có `pos` thì tạo thêm spatial graph, không có `pos` thì dùng nhánh 2D bond-only |
 | `hignn` | `x`, `edge_index`, `edge_attr`, `brics_edge_index`, `brics_edge_attr`, `atom_to_fragment`, `batch` | `brics_fragments` thêm BRICS fragment view |
 | `himnet` | `himnet_x`, `himnet_edge_index`, `himnet_edge_attr`, `himnet_reverse_edge_index`, `himnet_node_batch`, `himnet_node_type`, `himnet_fp` | `himnet_inputs` thêm unified hierarchy và fingerprint views |
 | `molecular_graph_embedding` | `mge_x`, `edge_index`, `mge_edge_attr`, `batch` | `coley_2017_features` thêm feature tensors cho MGE |
@@ -146,6 +185,16 @@ của project là bắt buộc.
 - Với MGE, helper bundled tạo `mge_x`/`mge_edge_attr` theo default 32/8. Custom
   feature schema vẫn hợp lệ nếu đồng thời đặt `input_atom_dim`/`input_bond_dim`
   của model khớp với tensor cung cấp.
+- Với `mpnn_3d_distance_bins`, các cạnh covalent giữ nhãn single/double/triple/
+  aromatic; mọi pair atom còn lại nhận một trong mười distance bin. Helper nhận
+  canonical 14-wide bond features hoặc profile 5-wide của `pdbbind_complex`.
+- Với PotentialNet, Stage 1 chỉ nhận covalent typed edges. Nếu có spatial fields,
+  Stage 2 nhận cả spatial distance-bin và covalent typed edges; nếu không có, Stage 2
+  bị bỏ qua thay vì nhận một graph covalent giả. Readout chỉ sum atom có
+  `ligand_mask=True` (CSV-SMILES mặc định là toàn bộ atom). Built-in transform dùng
+  profile spatial tương thích DGL-LifeSci (cutoff 4.5 Å, bốn bins và tối đa bốn
+  incoming neighbours), nhưng giữ các relation đồng thời thành cạnh song song thay vì
+  ghi đè chúng.
 
 ## Hook tùy biến cho `molgnn train`
 
@@ -165,6 +214,10 @@ AdamW và fit loop có sẵn. `validate-config` không import hay thực thi hoo
 
 Hook được thực thi như Python cục bộ đáng tin cậy; chỉ dùng file do bạn kiểm soát.
 Selector đã dùng cũng được ghi vào `runtime_hooks` trong config artifact của run.
+
+`--featurizer` hiện có ABI SMILES-only nên chủ động không hỗ trợ
+`data.source: pdbbind_complex`; source này đã nạp ligand, pocket và tọa độ trực tiếp.
+`--training-strategy` vẫn dùng được cho cả hai source.
 
 Featurizer nhận một SMILES hợp lệ cùng label đã parse và phải trả về
 `molgnn.data.MolecularData`:
@@ -282,8 +335,10 @@ dùng có thể thay featurizer hoặc training strategy mà không phải mang 
 liệu nội bộ. Nó không tuyên bố tái lập feature schema, training protocol hay
 kết quả benchmark cụ thể.
 
-Canonical runner biểu diễn mỗi liên kết phân tử bằng hai cạnh ngược chiều và
-không đưa self-loop vào input. Mọi model chặn cạnh nối giữa các sample trong
+Canonical CSV runner biểu diễn mỗi liên kết phân tử bằng hai cạnh ngược chiều và
+không đưa self-loop vào input. PDBBind source cũng tạo một complex graph cho mỗi
+sample, giữ `pos` và `ligand_mask`; transform riêng của PotentialNet hoặc
+`mpnn_3d_distance_bins` có thể dùng các tọa độ đó để tạo spatial edges. Mọi model chặn cạnh nối giữa các sample trong
 cùng batch; các model có phương trình nguồn tự cộng trạng thái node cũng chặn
 self-loop, còn `dmpnn` kiểm tra thêm reverse-edge map. Nếu dùng featurizer riêng,
 hãy giữ các quy ước này khi muốn dùng đúng input contract; `gcn_baseline` vẫn giữ

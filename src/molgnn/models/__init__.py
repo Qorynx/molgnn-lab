@@ -23,6 +23,9 @@ if TYPE_CHECKING:
     from .molecular_graph_embedding_2017 import (
         MolecularGraphEmbedding as MolecularGraphEmbedding,
     )
+    from .mpnn_2017 import MPNN as MPNN
+    from .mpnn_2017 import MPNNDistanceBins3D as MPNNDistanceBins3D
+    from .potentialnet_2018 import PotentialNet as PotentialNet
     from .registration import register_builtin_models as register_builtin_models
     from .trimnet_2020 import TrimNet2020 as TrimNet2020
 
@@ -44,6 +47,9 @@ _EXPORTS = {
         ".molecular_graph_embedding_2017",
         "MolecularGraphEmbedding",
     ),
+    "MPNN": (".mpnn_2017", "MPNN"),
+    "MPNNDistanceBins3D": (".mpnn_2017", "MPNNDistanceBins3D"),
+    "PotentialNet": (".potentialnet_2018", "PotentialNet"),
     "NTNConv": (".hignn_2023", "NTNConv"),
     "TrimNet2020": (".trimnet_2020", "TrimNet2020"),
     "register_builtin_models": (".registration", "register_builtin_models"),
@@ -77,6 +83,9 @@ __all__ = (
     "HimNet",
     "HimNetData",
     "MolecularGraphEmbedding",
+    "MPNN",
+    "MPNNDistanceBins3D",
+    "PotentialNet",
     "NTNConv",
     "TrimNet2020",
     "register_builtin_models",

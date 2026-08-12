@@ -7,6 +7,7 @@ import torch
 from torch_geometric.data import Batch
 from torch_geometric.data.data import BaseData
 
+from molgnn.data import MolecularData
 from molgnn.featurizer import featurize_smiles
 from molgnn.models.attentivefp_2020 import AttentiveFP
 from molgnn.models.contracts import validate_batched_molecular_graph
@@ -15,11 +16,15 @@ from molgnn.models.gcn_baseline import GCNBaseline
 from molgnn.models.hignn_2023 import HiGNN
 from molgnn.models.himnet_2026 import HimNet
 from molgnn.models.molecular_graph_embedding_2017 import MolecularGraphEmbedding
+from molgnn.models.mpnn_2017 import MPNN
+from molgnn.models.potentialnet_2018 import PotentialNet
 from molgnn.models.trimnet_2020 import TrimNet2020
 from molgnn.transforms import (
     add_brics_fragments,
     add_coley_2017_features,
     add_himnet_inputs,
+    add_mpnn_edge_types,
+    add_potentialnet_inputs,
     add_reverse_edge_index,
 )
 
@@ -29,6 +34,28 @@ def _canonical_batch(*smiles: str) -> Batch:
         featurize_smiles(value, targets=[0.0], target_mask=[True], sample_id=index)
         for index, value in enumerate(smiles)
     ]
+    return Batch.from_data_list(list[BaseData](samples))
+
+
+def _potentialnet_batch() -> Batch:
+    samples = []
+    for sample_id in range(2):
+        sample = MolecularData(
+            x=torch.zeros((3, 44), dtype=torch.float32),
+            edge_index=torch.tensor([[0, 1], [1, 0]], dtype=torch.long),
+            edge_attr=torch.tensor(
+                [[1, 0, 0, 0, 1], [1, 0, 0, 0, 1]], dtype=torch.float32
+            ),
+            y=torch.zeros((1, 1), dtype=torch.float32),
+            y_mask=torch.ones((1, 1), dtype=torch.bool),
+            sample_id=torch.tensor([sample_id], dtype=torch.long),
+            pos=torch.tensor(
+                [[0.0, 0.0, 0.0], [1.5, 0.0, 0.0], [4.5, 0.0, 0.0]],
+                dtype=torch.float32,
+            ),
+            ligand_mask=torch.tensor([True, True, False]),
+        )
+        samples.append(add_potentialnet_inputs(sample))
     return Batch.from_data_list(list[BaseData](samples))
 
 
@@ -158,6 +185,24 @@ def _model_cases() -> tuple[tuple[str, Callable[[], object], Callable[[], Batch]
             ),
         ),
         (
+            "mpnn",
+            lambda: MPNN(
+                153,
+                hidden_dim=160,
+                num_message_passing_steps=1,
+                readout_hidden_dim=4,
+                readout_num_hidden_layers=1,
+            ),
+            lambda: Batch.from_data_list(
+                list[BaseData](
+                    [
+                        add_mpnn_edge_types(sample)
+                        for sample in _canonical_batch("CC", "CC").to_data_list()
+                    ]
+                )
+            ),
+        ),
+        (
             "trimnet",
             lambda: TrimNet2020(
                 153,
@@ -233,3 +278,28 @@ def test_himnet_accepts_its_prepared_contract_and_rejects_cross_graph_edges() ->
     batch.himnet_edge_index[1, 0] = first_nodes
     with pytest.raises(ValueError, match=r"himnet_edge_index must not connect different graphs"):
         model(batch)
+
+
+def test_potentialnet_rejects_cross_graph_spatial_edges() -> None:
+    batch = _potentialnet_batch()
+    model = PotentialNet(
+        atom_dim=44,
+        bond_hidden_dim=48,
+        spatial_hidden_dim=48,
+        gather_dim=48,
+        num_bond_steps=1,
+        num_spatial_steps=1,
+        readout_hidden_dims=(8,),
+    )
+    assert model(batch).shape == (2, 1)
+
+    invalid = batch.clone()
+    invalid.potentialnet_stage2_edge_index = (
+        batch.potentialnet_stage2_edge_index.clone()
+    )
+    invalid.potentialnet_stage2_edge_index[1, 0] = 3
+    with pytest.raises(
+        ValueError,
+        match=r"potentialnet_stage2_edge_index must not connect different graphs",
+    ):
+        model(invalid)

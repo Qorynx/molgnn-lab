@@ -12,7 +12,8 @@ from torch.nn import functional as F
 
 from .config import TaskConfig
 from .data import validate_molecular_data
-from .dataset import CsvMoleculeDataset
+from .dataset import MolecularDataset
+from .featurizer import FeatureSchema
 
 
 class TaskError(ValueError):
@@ -148,30 +149,41 @@ class TargetScalerState:
 
 
 def fit_target_scaler(
-    dataset: CsvMoleculeDataset,
+    dataset: MolecularDataset,
     train_indices: Sequence[int],
+    *,
+    feature_schema: FeatureSchema | None = None,
+    num_targets: int | None = None,
 ) -> TargetScalerState:
-    """Fit per-target population mean/std on observed training labels only."""
+    """Fit per-target population mean/std on observed training labels only.
+
+    Existing CSV callers may omit ``feature_schema`` and ``num_targets``;
+    they are read from the legacy dataset attributes. Dataset sources that
+    carry those values beside their generic sample collection pass both
+    explicitly through the runner.
+    """
+
     indices = _validate_train_indices(dataset, train_indices)
-    num_targets = dataset.summary.num_targets
-    sums = torch.zeros(num_targets, dtype=torch.float64)
-    sum_squares = torch.zeros(num_targets, dtype=torch.float64)
-    counts = torch.zeros(num_targets, dtype=torch.int64)
+    schema = _resolve_feature_schema(dataset, feature_schema)
+    target_count = _resolve_num_targets(dataset, num_targets)
+    sums = torch.zeros(target_count, dtype=torch.float64)
+    sum_squares = torch.zeros(target_count, dtype=torch.float64)
+    counts = torch.zeros(target_count, dtype=torch.int64)
 
     for index in indices:
         data = dataset[index]
-        validate_molecular_data(data, dataset.feature_schema, num_targets)
+        validate_molecular_data(data, schema, target_count)
         values = data.y[0].to(dtype=torch.float64)
         observed = data.y_mask[0]
         sums[observed] += values[observed]
         sum_squares[observed] += values[observed] * values[observed]
         counts[observed] += 1
 
-    mean = torch.zeros(num_targets, dtype=torch.float64)
-    scale = torch.ones(num_targets, dtype=torch.float64)
+    mean = torch.zeros(target_count, dtype=torch.float64)
+    scale = torch.ones(target_count, dtype=torch.float64)
     has_values = counts > 0
     mean[has_values] = sums[has_values] / counts[has_values]
-    variance = torch.zeros(num_targets, dtype=torch.float64)
+    variance = torch.zeros(target_count, dtype=torch.float64)
     variance[has_values] = (
         sum_squares[has_values] / counts[has_values] - mean[has_values] * mean[has_values]
     ).clamp_min(0.0)
@@ -218,7 +230,7 @@ def _normalise_state_tensor(value: Tensor, field: str) -> Tensor:
 
 
 def _validate_train_indices(
-    dataset: CsvMoleculeDataset,
+    dataset: MolecularDataset,
     train_indices: Sequence[int],
 ) -> tuple[int, ...]:
     if isinstance(train_indices, (str, bytes)):
@@ -239,6 +251,47 @@ def _validate_train_indices(
             raise TaskError(f"train_indices contains duplicate index {index}")
         seen.add(index)
     return indices
+
+
+def _resolve_feature_schema(
+    dataset: MolecularDataset,
+    explicit_schema: FeatureSchema | None,
+) -> FeatureSchema:
+    if explicit_schema is not None:
+        if not isinstance(explicit_schema, FeatureSchema):
+            raise TaskError("feature_schema must be a FeatureSchema or None")
+        return explicit_schema
+    schema = getattr(dataset, "feature_schema", None)
+    if not isinstance(schema, FeatureSchema):
+        raise TaskError(
+            "feature_schema is required for datasets without a feature_schema attribute"
+        )
+    return schema
+
+
+def _resolve_num_targets(
+    dataset: MolecularDataset,
+    explicit_num_targets: int | None,
+) -> int:
+    if explicit_num_targets is not None:
+        if (
+            isinstance(explicit_num_targets, bool)
+            or not isinstance(explicit_num_targets, int)
+            or explicit_num_targets < 1
+        ):
+            raise TaskError("num_targets must be a positive integer or None")
+        return explicit_num_targets
+    summary = getattr(dataset, "summary", None)
+    num_targets = getattr(summary, "num_targets", None)
+    if (
+        isinstance(num_targets, bool)
+        or not isinstance(num_targets, int)
+        or num_targets < 1
+    ):
+        raise TaskError(
+            "num_targets is required for datasets without a summary.num_targets attribute"
+        )
+    return num_targets
 
 
 def _validate_target_tensor(targets: Tensor, scaler: TargetScalerState, field: str) -> None:

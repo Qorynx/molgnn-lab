@@ -7,6 +7,7 @@ from pathlib import Path
 
 import yaml
 
+import molgnn.runner as runner
 from molgnn.cli import main
 
 
@@ -168,8 +169,18 @@ def fit(model, loaders, task_adapter, training, *, device, target_names, on_epoc
     }
 
 
-def test_train_without_hooks_keeps_default_runtime_metadata(tmp_path: Path) -> None:
+def test_train_without_hooks_keeps_default_runtime_metadata(
+    tmp_path: Path, monkeypatch
+) -> None:
     config = _write_config(tmp_path, name="default_hooks")
+    original_load_dataset = runner.load_dataset
+    loaded_sources: list[str] = []
+
+    def capture_dataset_source(data_config, task_config, **kwargs):
+        loaded_sources.append(data_config.source)
+        return original_load_dataset(data_config, task_config, **kwargs)
+
+    monkeypatch.setattr(runner, "load_dataset", capture_dataset_source)
 
     assert main(["train", "--config", str(config)]) == 0
 
@@ -179,3 +190,6 @@ def test_train_without_hooks_keeps_default_runtime_metadata(tmp_path: Path) -> N
         )
     )
     assert "runtime_hooks" not in resolved
+    assert resolved["data"]["source"] == "csv_smiles"
+    assert resolved["dataset_source"] == "csv_smiles"
+    assert loaded_sources == ["csv_smiles"]

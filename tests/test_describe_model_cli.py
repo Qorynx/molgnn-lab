@@ -41,6 +41,7 @@ def test_describe_model_json_exposes_only_the_runtime_contract(capsys) -> None:
         "reverse_edge_index",
         "batch",
     ]
+    assert payload["optional_batch_fields"] == []
     assert payload["graph_transform_name"] == "directed_edges"
     assert payload["prediction_reducer_name"] == "identity"
     assert payload["benchmark_enabled"] is True
@@ -48,6 +49,7 @@ def test_describe_model_json_exposes_only_the_runtime_contract(capsys) -> None:
     assert set(payload) == {
         "name",
         "required_batch_fields",
+        "optional_batch_fields",
         "graph_transform_name",
         "prediction_reducer_name",
         "benchmark_enabled",
@@ -75,6 +77,73 @@ def test_describe_model_reports_himnet_contract(capsys) -> None:
     assert payload["graph_transform_name"] == "himnet_inputs"
     assert payload["prediction_reducer_name"] == "identity"
     assert payload["benchmark_order"] == 70
+
+
+def test_describe_model_reports_mpnn_contract(capsys) -> None:
+    exit_code = main(["describe-model", "--model", "mpnn", "--format", "json"])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 0
+    assert captured.err == ""
+    assert payload["name"] == "mpnn"
+    assert payload["required_batch_fields"] == [
+        "x",
+        "edge_index",
+        "mpnn_edge_type",
+        "batch",
+    ]
+    assert payload["graph_transform_name"] == "mpnn_edge_types"
+    assert payload["prediction_reducer_name"] == "identity"
+    assert payload["benchmark_order"] == 45
+
+
+def test_describe_model_reports_mpnn_3d_distance_bin_contract(capsys) -> None:
+    exit_code = main(
+        ["describe-model", "--model", "mpnn_3d_distance_bins", "--format", "json"]
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 0
+    assert captured.err == ""
+    assert payload["name"] == "mpnn_3d_distance_bins"
+    assert payload["required_batch_fields"] == [
+        "x",
+        "mpnn_3d_edge_index",
+        "mpnn_3d_edge_type",
+        "batch",
+    ]
+    assert payload["graph_transform_name"] == "mpnn_3d_distance_bins"
+    assert payload["prediction_reducer_name"] == "identity"
+    assert payload["benchmark_enabled"] is False
+    assert payload["benchmark_order"] == 46
+
+
+def test_describe_model_reports_potentialnet_contract(capsys) -> None:
+    exit_code = main(["describe-model", "--model", "potentialnet", "--format", "json"])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 0
+    assert captured.err == ""
+    assert payload["name"] == "potentialnet"
+    assert payload["required_batch_fields"] == [
+        "x",
+        "potentialnet_bond_edge_index",
+        "potentialnet_bond_edge_type",
+        "ligand_mask",
+        "batch",
+    ]
+    assert payload["optional_batch_fields"] == [
+        "potentialnet_stage2_edge_index",
+        "potentialnet_stage2_edge_type",
+        "potentialnet_use_spatial",
+    ]
+    assert payload["graph_transform_name"] == "potentialnet_inputs"
+    assert payload["prediction_reducer_name"] == "identity"
+    assert payload["benchmark_enabled"] is False
+    assert payload["benchmark_order"] == 80
 
 
 def test_describe_model_reports_unknown_names_without_a_traceback(capsys) -> None:
