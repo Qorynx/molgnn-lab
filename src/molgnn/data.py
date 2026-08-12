@@ -31,6 +31,8 @@ class MolecularData(Data):
     mpnn_edge_type: Tensor
     mpnn_3d_edge_index: Tensor
     mpnn_3d_edge_type: Tensor
+    weave_pair_index: Tensor
+    weave_pair_attr: Tensor
     pos: Tensor
     ligand_mask: Tensor
     potentialnet_bond_edge_index: Tensor
@@ -41,6 +43,14 @@ class MolecularData(Data):
     brics_edge_index: Tensor
     brics_edge_attr: Tensor
     atom_to_fragment: Tensor
+    frag_index: Tensor
+    x_frags: Tensor
+    frag_batch: Tensor
+    edge_index_bonds_graph: Tensor
+    edge_attr_bonds: Tensor
+    frag_connection_features: Tensor
+    edge_index_fbonds: Tensor
+    edge_attr_fbonds: Tensor
 
     def __inc__(self, key: str, value: Any, *args: Any, **kwargs: Any) -> Any:
         """Offset model-specific local indices when PyG batches graphs."""
@@ -50,10 +60,12 @@ class MolecularData(Data):
         if key == "atom_to_fragment":
             return int(value.max().item()) + 1 if isinstance(value, Tensor) and value.numel() else 0
         if key == "frag_index":
-            num_fragments = 0
-            if isinstance(value, Tensor) and value.numel():
-                num_fragments = int(value.max().item()) + 1
-            return torch.tensor([[num_fragments], [num_fragments]], dtype=torch.long)
+            fragment_features = getattr(self, "x_frags", None)
+            return (
+                int(fragment_features.shape[0])
+                if isinstance(fragment_features, Tensor)
+                else 0
+            )
         if key == "edge_index_bonds_graph":
             return self.edge_index.shape[1] if isinstance(self.edge_index, Tensor) else 0
         if key == "edge_index_fbonds":

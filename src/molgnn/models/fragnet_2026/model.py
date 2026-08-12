@@ -26,21 +26,13 @@ _ACTIVATIONS: dict[str, type[nn.Module]] = {
 
 
 class FragNet(BaseMolecularModel):
-    """FragNet (Gihan et al., JACS 2026) hierarchical bond-atom-fragment GNN.
+    """Hierarchical bond-atom-fragment graph network.
 
-    The model consumes the multi-graph view produced by ``add_fragnet_inputs``:
-    the canonical atom graph, a BRICS fragment graph, a bond-graph line graph
-    with ``cos(bond angle)`` edge features, and a bipartite fragment-connection
-    graph.  RDKit parsing, 3D conformer generation, and BRICS decomposition
-    belong to the transform, not to this forward path.
-
-    Note on pretraining: The paper's published numbers come from a 3D-PGT-style
-    self-supervised pretraining step (bond length, bond angle, dihedral angle
-    prediction) followed by finetuning.  This port is **finetune-from-scratch
-    only** — there is no pretrained encoder shipped here.  Numbers reported
-    with this model will therefore be lower than the paper's tables.  For a
-    fair in-repo benchmark, run all models through the same from-scratch
-    pipeline; do not compare against the paper's numbers directly.
+    The model consumes a multi-graph view produced by ``add_fragnet_inputs``:
+    the canonical atom graph, a BRICS fragment graph, a bond-line graph with
+    cosine-angle edge features derived from supplied coordinates, and a
+    bipartite fragment-connection graph.  Graph construction belongs to the
+    transform; this module only performs the declared message passing.
     """
 
     required_batch_fields = (
@@ -357,6 +349,20 @@ class FragNet(BaseMolecularModel):
             edge_field="edge_index",
             forbid_self_loops=False,
         )
+        fragment_graph_count = validate_batched_molecular_graph(
+            frag_index,
+            frag_batch,
+            num_nodes=x_frags.shape[0],
+            device=x.device,
+            edge_field="frag_index",
+            forbid_self_loops=False,
+        )
+        if fragment_graph_count != num_graphs:
+            raise ValueError("batch.frag_batch must cover the same graphs as batch.batch")
+        if not torch.equal(frag_batch[atom_to_fragment], graph_batch):
+            raise ValueError(
+                "batch.atom_to_fragment must assign every atom to a fragment in its graph"
+            )
 
         # Bond-graph: each node is a directed edge of the atom graph; assign
         # graph ids by the source-atom's graph id. Skip validation when the

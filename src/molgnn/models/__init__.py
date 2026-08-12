@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from .registration import register_builtin_models as register_builtin_models
     from .resgat_2024 import ResGAT as ResGAT
     from .trimnet_2020 import TrimNet2020 as TrimNet2020
+    from .weave_2016 import Weave as Weave
 
 _EXPORTS = {
     "AttentiveFP": (".attentivefp_2020", "AttentiveFP"),
@@ -51,8 +52,10 @@ _EXPORTS = {
     "MPNN": (".mpnn_2017", "MPNN"),
     "MPNNDistanceBins3D": (".mpnn_2017", "MPNNDistanceBins3D"),
     "PotentialNet": (".potentialnet_2018", "PotentialNet"),
+    "ResGAT": (".resgat_2024", "ResGAT"),
     "NTNConv": (".hignn_2023", "NTNConv"),
     "TrimNet2020": (".trimnet_2020", "TrimNet2020"),
+    "Weave": (".weave_2016", "Weave"),
     "register_builtin_models": (".registration", "register_builtin_models"),
 }
 
@@ -87,7 +90,9 @@ __all__ = (
     "MPNN",
     "MPNNDistanceBins3D",
     "PotentialNet",
+    "ResGAT",
     "NTNConv",
     "TrimNet2020",
+    "Weave",
     "register_builtin_models",
 )

@@ -120,6 +120,27 @@ def test_describe_model_reports_mpnn_3d_distance_bin_contract(capsys) -> None:
     assert payload["benchmark_order"] == 46
 
 
+def test_describe_model_reports_weave_contract(capsys) -> None:
+    exit_code = main(["describe-model", "--model", "weave", "--format", "json"])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 0
+    assert captured.err == ""
+    assert payload["name"] == "weave"
+    assert payload["required_batch_fields"] == [
+        "x",
+        "weave_pair_index",
+        "weave_pair_attr",
+        "batch",
+    ]
+    assert payload["optional_batch_fields"] == []
+    assert payload["graph_transform_name"] == "weave_inputs"
+    assert payload["prediction_reducer_name"] == "identity"
+    assert payload["benchmark_enabled"] is True
+    assert payload["benchmark_order"] == 65
+
+
 def test_describe_model_reports_potentialnet_contract(capsys) -> None:
     exit_code = main(["describe-model", "--model", "potentialnet", "--format", "json"])
 

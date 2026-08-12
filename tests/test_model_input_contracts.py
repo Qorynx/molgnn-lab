@@ -19,6 +19,7 @@ from molgnn.models.molecular_graph_embedding_2017 import MolecularGraphEmbedding
 from molgnn.models.mpnn_2017 import MPNN
 from molgnn.models.potentialnet_2018 import PotentialNet
 from molgnn.models.trimnet_2020 import TrimNet2020
+from molgnn.models.weave_2016 import Weave
 from molgnn.transforms import (
     add_brics_fragments,
     add_coley_2017_features,
@@ -26,6 +27,7 @@ from molgnn.transforms import (
     add_mpnn_edge_types,
     add_potentialnet_inputs,
     add_reverse_edge_index,
+    add_weave_inputs,
 )
 
 
@@ -301,5 +303,30 @@ def test_potentialnet_rejects_cross_graph_spatial_edges() -> None:
     with pytest.raises(
         ValueError,
         match=r"potentialnet_stage2_edge_index must not connect different graphs",
+    ):
+        model(invalid)
+
+
+def test_weave_rejects_cross_graph_ordered_pairs() -> None:
+    samples = [
+        add_weave_inputs(sample)
+        for sample in _canonical_batch("CC", "CC").to_data_list()
+    ]
+    batch = Batch.from_data_list(list[BaseData](samples))
+    model = Weave(
+        atom_dim=153,
+        hidden_dim=8,
+        num_weave_modules=1,
+        graph_feature_dim=8,
+        predictor_hidden_dims=(8,),
+        dropout=0.0,
+    )
+    assert model(batch).shape == (2, 1)
+
+    invalid = batch.clone()
+    invalid.weave_pair_index = batch.weave_pair_index.clone()
+    invalid.weave_pair_index[1, 0] = 2
+    with pytest.raises(
+        ValueError, match=r"weave_pair_index must not connect different graphs"
     ):
         model(invalid)

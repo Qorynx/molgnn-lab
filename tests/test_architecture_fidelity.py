@@ -8,6 +8,7 @@ from molgnn.models.hignn_2023 import HiGNN
 from molgnn.models.himnet_2026 import HimNet
 from molgnn.models.mpnn_2017 import MPNN, MPNNDistanceBins3D
 from molgnn.models.potentialnet_2018 import PotentialNet
+from molgnn.models.weave_2016 import Weave
 from molgnn.models.registration import register_builtin_models
 from molgnn.registry import available_models, get_model_spec
 from molgnn.transforms import add_brics_fragments, add_himnet_inputs
@@ -37,6 +38,7 @@ def test_builtin_models_expose_runtime_input_contracts() -> None:
         "mpnn_3d_distance_bins",
         "potentialnet",
         "trimnet_2020",
+        "weave",
     }
     assert expected <= set(available_models())
     for name in expected:
@@ -186,6 +188,28 @@ def test_mpnn_preserves_legacy_directional_messages_and_gru_update() -> None:
     expected = (1 - gate) * hidden + gate * candidate
 
     assert torch.allclose(update(hidden, messages), expected, atol=1e-6)
+
+
+def test_weave_exposes_coupled_atom_pair_modules_and_fixed_histogram_readout() -> None:
+    model = Weave(
+        atom_dim=3,
+        pair_dim=2,
+        hidden_dim=4,
+        num_weave_modules=2,
+        graph_feature_dim=5,
+        predictor_hidden_dims=(6,),
+        dropout=0.0,
+    )
+    first = model.weave_modules[0]
+
+    assert len(model.weave_modules) == 2
+    assert first.atom_to_atom.in_features == 3
+    assert first.pair_to_atom.in_features == 2
+    assert first.atom_to_pair.in_features == 6
+    assert first.update_atom.in_features == 8
+    assert first.update_pair.in_features == 8
+    assert model.histogram_readout.gaussian_bins == 11
+    assert model.histogram_readout.output_dim == 55
 
 
 def test_potentialnet_keeps_two_tied_stages_and_ligand_only_readout() -> None:

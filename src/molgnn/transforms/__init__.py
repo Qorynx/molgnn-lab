@@ -10,6 +10,7 @@ from .fragnet import add_fragnet_inputs
 from .himnet import add_himnet_inputs
 from .mpnn import add_mpnn_3d_distance_bins_inputs, add_mpnn_edge_types
 from .potentialnet import add_potentialnet_inputs
+from .weave import add_weave_inputs
 
 _TRANSFORMS: dict[str, GraphTransform] = {}
 
@@ -46,6 +47,8 @@ def register_builtin_transforms() -> None:
         register_graph_transform("fragnet_inputs", add_fragnet_inputs)
     if "potentialnet_inputs" not in _TRANSFORMS:
         register_graph_transform("potentialnet_inputs", add_potentialnet_inputs)
+    if "weave_inputs" not in _TRANSFORMS:
+        register_graph_transform("weave_inputs", add_weave_inputs)
 
 
 def get_graph_transform(name: str | None) -> GraphTransform | None:
@@ -80,6 +83,7 @@ __all__ = [
     "add_mpnn_edge_types",
     "add_potentialnet_inputs",
     "add_reverse_edge_index",
+    "add_weave_inputs",
     "get_graph_transform",
     "register_builtin_transforms",
     "register_graph_transform",
