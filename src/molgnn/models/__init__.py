@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from .mpnn_2017 import MPNNDistanceBins3D as MPNNDistanceBins3D
     from .potentialnet_2018 import PotentialNet as PotentialNet
     from .registration import register_builtin_models as register_builtin_models
+    from .resgat_2024 import ResGAT as ResGAT
     from .trimnet_2020 import TrimNet2020 as TrimNet2020
 
 _EXPORTS = {

@@ -188,9 +188,9 @@ def test_unknown_model_lists_available_models() -> None:
     register_builtin_models()
     with pytest.raises(
         RegistryError,
-        match="Available models: attentivefp, dmpnn, gcn_baseline, hignn, "
-        "himnet, molecular_graph_embedding, mpnn, mpnn_3d_distance_bins, "
-        "potentialnet, trimnet_2020",
+        match="Available models: attentivefp, dmpnn, fragnet, gcn_baseline, "
+        "hignn, himnet, molecular_graph_embedding, mpnn, mpnn_3d_distance_bins, "
+        "potentialnet, resgat, trimnet_2020",
     ):
         build_model("missing", {}, BuildContext(1, 1, 1))
 
@@ -213,6 +213,8 @@ def test_benchmark_selection_uses_default_order_and_preserves_explicit_order() -
         "molecular_graph_embedding",
         "trimnet_2020",
         "himnet",
+        "resgat",
+        "fragnet",
     )
     assert tuple(
         spec.name for spec in resolve_benchmark_models(("dmpnn", "gcn_baseline"))
