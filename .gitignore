@@ -5,6 +5,10 @@
 # Internal design, audit, and planning material stays in the local workspace.
 docs/*
 papers/
+paper_pdf/
+tmp/
+data_test/
+/.opencode/
 tests/
 # Public regression checks that preserve the architecture-fidelity contract.
 !tests/

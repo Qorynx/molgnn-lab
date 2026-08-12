@@ -49,6 +49,20 @@ class MolecularData(Data):
             return self.edge_index.shape[1]
         if key == "atom_to_fragment":
             return int(value.max().item()) + 1 if isinstance(value, Tensor) and value.numel() else 0
+        if key == "frag_index":
+            num_fragments = 0
+            if isinstance(value, Tensor) and value.numel():
+                num_fragments = int(value.max().item()) + 1
+            return torch.tensor([[num_fragments], [num_fragments]], dtype=torch.long)
+        if key == "edge_index_bonds_graph":
+            return self.edge_index.shape[1] if isinstance(self.edge_index, Tensor) else 0
+        if key == "edge_index_fbonds":
+            # Both axes are connection indices (graph where connections are
+            # nodes and edges connect sharing connections).
+            connection_features = getattr(self, "frag_connection_features", None)
+            if isinstance(connection_features, Tensor):
+                return int(connection_features.shape[0])
+            return 0
         return super().__inc__(key, value, *args, **kwargs)
 
     def __cat_dim__(self, key: str, value: Any, *args: Any, **kwargs: Any) -> Any:
