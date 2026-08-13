@@ -231,7 +231,7 @@ def test_unknown_model_lists_available_models() -> None:
         RegistryError,
         match="Available models: attentivefp, dmpnn, fragnet, gcn_baseline, "
         "hignn, himnet, molecular_graph_embedding, mpnn, mpnn_3d_distance_bins, "
-        "potentialnet, resgat, trimnet_2020, weave",
+        "mvgnn_cross, potentialnet, resgat, trimnet_2020, weave",
     ):
         build_model("missing", {}, BuildContext(1, 1, 1))
 
@@ -256,6 +256,7 @@ def test_benchmark_selection_uses_default_order_and_preserves_explicit_order() -
         "weave",
         "himnet",
         "resgat",
+        "mvgnn_cross",
     )
     assert tuple(
         spec.name for spec in resolve_benchmark_models(("dmpnn", "gcn_baseline"))
