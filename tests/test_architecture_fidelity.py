@@ -35,6 +35,7 @@ def test_builtin_models_expose_runtime_input_contracts() -> None:
         "molecular_graph_embedding",
         "mpnn",
         "mpnn_3d_distance_bins",
+        "mvgnn_cross",
         "potentialnet",
         "trimnet_2020",
     }

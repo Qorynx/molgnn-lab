@@ -11,6 +11,7 @@ from .hignn_2023 import HiGNN
 from .himnet_2026 import HimNet
 from .molecular_graph_embedding_2017 import MolecularGraphEmbedding
 from .mpnn_2017 import MPNN, MPNNDistanceBins3D
+from .mvgnn_2020 import MVGNNcross
 from .potentialnet_2018 import PotentialNet
 from .resgat_2024 import ResGAT
 from .trimnet_2020 import TrimNet2020
@@ -130,6 +131,13 @@ def register_builtin_models() -> None:
             prediction_reducer_name="identity",
             benchmark_order=75,
         )(ResGAT)
+    if "mvgnn_cross" not in available_models():
+        register_model(
+            "mvgnn_cross",
+            required_batch_fields=MVGNNcross.required_batch_fields,
+            prediction_reducer_name="identity",
+            benchmark_order=76,
+        )(MVGNNcross)
 
 
 __all__ = ["register_builtin_models"]
