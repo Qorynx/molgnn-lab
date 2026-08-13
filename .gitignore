@@ -22,11 +22,16 @@ tests/*
 !tests/test_registry.py
 !tests/test_fragnet.py
 !tests/test_weave.py
+!tests/test_ampnn_emnn_layers.py
+!tests/test_ampnn_emnn.py
+!tests/test_ampnn_emnn_task_compatibility.py
 uv.lock
 
-# Keep only the public example configuration
+# Keep public example and smoke configurations
 configs/*
 !configs/example.yaml
+!configs/ampnn_smoke.yaml
+!configs/emnn_smoke.yaml
 
 # Datasets and local data files
 data/

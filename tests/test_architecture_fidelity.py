@@ -28,9 +28,11 @@ def test_builtin_models_expose_runtime_input_contracts() -> None:
     register_builtin_models()
 
     expected = {
+        "ampnn",
         "gcn_baseline",
         "attentivefp",
         "dmpnn",
+        "emnn",
         "hignn",
         "himnet",
         "molecular_graph_embedding",
@@ -106,7 +108,9 @@ def test_himnet_exposes_source_backed_hierarchy_and_fusion_invariants() -> None:
     ).eval()
 
     assert model.directed_encoder.W_alpha.out_features == 1
-    assert model.directed_encoder.edge_attention.out_proj.__class__.__name__ == "Identity"
+    assert (
+        model.directed_encoder.edge_attention.out_proj.__class__.__name__ == "Identity"
+    )
     assert model.interaction_encoder.cross_attention.num_heads == 2
     assert model.feature_fusion.num_heads == 2
     assert model(batch).shape == (2, 1)
@@ -177,7 +181,8 @@ def test_mpnn_preserves_legacy_directional_messages_and_gru_update() -> None:
         atol=1e-6,
     )
     gate = torch.sigmoid(
-        messages @ update.message_update.weight.T + hidden @ update.state_update.weight.T
+        messages @ update.message_update.weight.T
+        + hidden @ update.state_update.weight.T
     )
     reset = torch.sigmoid(
         messages @ update.message_reset.weight.T + hidden @ update.state_reset.weight.T

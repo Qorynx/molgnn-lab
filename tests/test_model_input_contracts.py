@@ -10,6 +10,7 @@ from torch_geometric.data.data import BaseData
 from molgnn.data import MolecularData
 from molgnn.featurizer import featurize_smiles
 from molgnn.models.attentivefp_2020 import AttentiveFP
+from molgnn.models.ampnn_emnn_2020 import AMPNN, EMNN
 from molgnn.models.contracts import validate_batched_molecular_graph
 from molgnn.models.dmpnn_2024 import DMPNN
 from molgnn.models.gcn_baseline import GCNBaseline
@@ -24,6 +25,7 @@ from molgnn.transforms import (
     add_brics_fragments,
     add_coley_2017_features,
     add_himnet_inputs,
+    add_ampnn_edge_types,
     add_mpnn_edge_types,
     add_potentialnet_inputs,
     add_reverse_edge_index,
@@ -138,8 +140,56 @@ def _model_cases() -> tuple[tuple[str, Callable[[], object], Callable[[], Batch]
             lambda: _canonical_batch("CC", "CC"),
         ),
         (
+            "ampnn",
+            lambda: AMPNN(
+                153,
+                message_dim=4,
+                num_message_passing_steps=1,
+                message_hidden_dims=(4,),
+                attention_hidden_dims=(4,),
+                gather_dim=4,
+                gather_gate_hidden_dims=(4,),
+                gather_value_hidden_dims=(4,),
+                predictor_hidden_dims=(4,),
+                dropout=0.0,
+            ),
+            lambda: Batch.from_data_list(
+                list[BaseData](
+                    [
+                        add_ampnn_edge_types(sample)
+                        for sample in _canonical_batch("CC", "CC").to_data_list()
+                    ]
+                )
+            ),
+        ),
+        (
             "dmpnn",
             lambda: DMPNN(153, 14, hidden_dim=4, depth=2),
+            lambda: Batch.from_data_list(
+                list[BaseData](
+                    [
+                        add_reverse_edge_index(sample)
+                        for sample in _canonical_batch("CC", "CC").to_data_list()
+                    ]
+                )
+            ),
+        ),
+        (
+            "emnn",
+            lambda: EMNN(
+                153,
+                14,
+                edge_hidden_dim=4,
+                num_message_passing_steps=1,
+                edge_embedding_hidden_dims=(4,),
+                message_hidden_dims=(4,),
+                attention_hidden_dims=(4,),
+                gather_dim=4,
+                gather_gate_hidden_dims=(4,),
+                gather_value_hidden_dims=(4,),
+                predictor_hidden_dims=(4,),
+                dropout=0.0,
+            ),
             lambda: Batch.from_data_list(
                 list[BaseData](
                     [
@@ -278,7 +328,9 @@ def test_himnet_accepts_its_prepared_contract_and_rejects_cross_graph_edges() ->
     first_nodes = samples[0].himnet_x.shape[0]
     batch.himnet_edge_index = batch.himnet_edge_index.clone()
     batch.himnet_edge_index[1, 0] = first_nodes
-    with pytest.raises(ValueError, match=r"himnet_edge_index must not connect different graphs"):
+    with pytest.raises(
+        ValueError, match=r"himnet_edge_index must not connect different graphs"
+    ):
         model(batch)
 
 

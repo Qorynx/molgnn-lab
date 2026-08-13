@@ -28,6 +28,7 @@ class MolecularData(Data):
     sample_id: Tensor
     smiles: str
     reverse_edge_index: Tensor
+    ampnn_edge_type: Tensor
     mpnn_edge_type: Tensor
     mpnn_3d_edge_index: Tensor
     mpnn_3d_edge_type: Tensor

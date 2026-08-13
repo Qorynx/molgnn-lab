@@ -6,6 +6,9 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from .ampnn_emnn_2020.ampnn import AMPNN as AMPNN
+    from .ampnn_emnn_2020.data import EMNNData as EMNNData
+    from .ampnn_emnn_2020.emnn import EMNN as EMNN
     from .attentivefp_2020 import AttentiveFP as AttentiveFP
     from .attentivefp_2020 import AttentiveFPTrace as AttentiveFPTrace
     from .base import BaseMolecularModel as BaseMolecularModel
@@ -32,12 +35,15 @@ if TYPE_CHECKING:
     from .weave_2016 import Weave as Weave
 
 _EXPORTS = {
+    "AMPNN": (".ampnn_emnn_2020.ampnn", "AMPNN"),
     "AttentiveFP": (".attentivefp_2020", "AttentiveFP"),
     "AttentiveFPTrace": (".attentivefp_2020", "AttentiveFPTrace"),
     "BaseMolecularModel": (".base", "BaseMolecularModel"),
     "ColeyGraphConv": (".molecular_graph_embedding_2017", "ColeyGraphConv"),
     "DMPNN": (".dmpnn_2024", "DMPNN"),
     "DMPNNData": (".dmpnn_2024", "DMPNNData"),
+    "EMNN": (".ampnn_emnn_2020.emnn", "EMNN"),
+    "EMNNData": (".ampnn_emnn_2020.data", "EMNNData"),
     "FragNet": (".fragnet_2026", "FragNet"),
     "FeatureAttention": (".hignn_2023", "FeatureAttention"),
     "GCNBaseline": (".gcn_baseline", "GCNBaseline"),
@@ -74,12 +80,15 @@ def __getattr__(name: str) -> Any:
 
 
 __all__ = (
+    "AMPNN",
     "DMPNN",
     "AttentiveFP",
     "AttentiveFPTrace",
     "BaseMolecularModel",
     "ColeyGraphConv",
     "DMPNNData",
+    "EMNN",
+    "EMNNData",
     "FragNet",
     "FeatureAttention",
     "GCNBaseline",

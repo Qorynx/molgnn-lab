@@ -41,6 +41,24 @@ def test_builtin_registration_and_context_injection() -> None:
     assert spec.required_batch_fields == ("x", "edge_index", "edge_attr", "batch")
     assert spec.graph_transform_name is None
     assert spec.prediction_reducer_name == "identity"
+    ampnn = build_model(
+        "ampnn",
+        {},
+        BuildContext(atom_dim=153, bond_dim=14, num_targets=2),
+    )
+    ampnn_spec = get_model_spec("ampnn")
+    assert isinstance(ampnn, nn.Module)
+    assert ampnn_spec.required_batch_fields == (
+        "x",
+        "edge_index",
+        "ampnn_edge_type",
+        "batch",
+    )
+    assert ampnn_spec.graph_transform_name == "ampnn_edge_types"
+    assert ampnn_spec.transform_output_fields == ("ampnn_edge_type",)
+    assert ampnn_spec.prediction_reducer_name == "identity"
+    assert ampnn_spec.benchmark_enabled is True
+    assert ampnn_spec.benchmark_order == 25
     dmpnn = build_model(
         "dmpnn",
         {"hidden_dim": 8, "depth": 2, "ffn_hidden_dim": 8},
@@ -51,6 +69,24 @@ def test_builtin_registration_and_context_injection() -> None:
     assert dmpnn_spec.graph_transform_name == "directed_edges"
     assert dmpnn_spec.prediction_reducer_name == "identity"
     assert "reverse_edge_index" in dmpnn_spec.required_batch_fields
+    emnn = build_model(
+        "emnn",
+        {},
+        BuildContext(atom_dim=153, bond_dim=14, num_targets=2),
+    )
+    emnn_spec = get_model_spec("emnn")
+    assert isinstance(emnn, nn.Module)
+    assert emnn_spec.required_batch_fields == (
+        "x",
+        "edge_index",
+        "edge_attr",
+        "reverse_edge_index",
+        "batch",
+    )
+    assert emnn_spec.graph_transform_name == "directed_edges"
+    assert emnn_spec.prediction_reducer_name == "identity"
+    assert emnn_spec.benchmark_enabled is True
+    assert emnn_spec.benchmark_order == 35
     mpnn = build_model(
         "mpnn",
         {
@@ -229,9 +265,10 @@ def test_unknown_model_lists_available_models() -> None:
     register_builtin_models()
     with pytest.raises(
         RegistryError,
-        match="Available models: attentivefp, dmpnn, fragnet, gcn_baseline, "
-        "hignn, himnet, molecular_graph_embedding, mpnn, mpnn_3d_distance_bins, "
-        "mvgnn_cross, potentialnet, resgat, trimnet_2020, weave",
+        match="Available models: ampnn, attentivefp, dmpnn, emnn, fragnet, "
+        "gcn_baseline, hignn, himnet, molecular_graph_embedding, mpnn, "
+        "mpnn_3d_distance_bins, mvgnn_cross, potentialnet, resgat, trimnet_2020, "
+        "weave",
     ):
         build_model("missing", {}, BuildContext(1, 1, 1))
 
@@ -248,7 +285,9 @@ def test_benchmark_selection_uses_default_order_and_preserves_explicit_order() -
     assert tuple(spec.name for spec in benchmark_models()) == (
         "gcn_baseline",
         "attentivefp",
+        "ampnn",
         "dmpnn",
+        "emnn",
         "hignn",
         "mpnn",
         "molecular_graph_embedding",

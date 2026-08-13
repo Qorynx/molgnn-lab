@@ -1,0 +1,35 @@
+extends: base.yaml
+
+experiment:
+  name: ampnn_smoke
+  seed: 7
+  output_dir: ../runs
+
+data:
+  path: ../tests/fixtures/tiny_regression.csv
+  split_ratios: [0.7, 0.2, 0.1]
+  invalid_smiles: error
+
+model:
+  name: ampnn
+  parameters:
+    message_dim: 16
+    num_message_passing_steps: 2
+    message_hidden_dims: [16]
+    attention_hidden_dims: [16]
+    gather_dim: 16
+    gather_gate_hidden_dims: [16]
+    gather_value_hidden_dims: [16]
+    predictor_hidden_dims: [16]
+    dropout: 0.0
+
+training:
+  epochs: 4
+  batch_size: 4
+  learning_rate: 0.005
+  weight_decay: 0.000001
+  patience: 2
+  monitor: val_loss
+  monitor_mode: min
+  device: cpu
+  num_workers: 0

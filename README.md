@@ -93,6 +93,11 @@ Kiểm tra config:
 molgnn validate-config --config configs/example.yaml
 ```
 
+Hai smoke config nhẹ cho các kiến trúc attention/message-passing mới là
+`configs/ampnn_smoke.yaml` và `configs/emnn_smoke.yaml`; chúng dùng fixture
+regression nhỏ của repository. Kiểm tra bằng lệnh trên hoặc chạy bằng
+`molgnn train --config <smoke-config>`.
+
 Huấn luyện:
 
 ```bash
@@ -117,7 +122,9 @@ dataset local đều được Git bỏ qua.
 
 - `gcn_baseline`
 - `attentivefp`
+- `ampnn`
 - `dmpnn`
+- `emnn`
 - `hignn`
 - `himnet`
 - `molecular_graph_embedding`
@@ -131,6 +138,8 @@ dataset local đều được Git bỏ qua.
 
 Tên mô hình được đặt tại `model.name`; tham số kiến trúc được truyền qua
 `model.parameters`.
+`ampnn` và `emnn` là các kiến trúc sparse 2D: chúng không yêu cầu hoặc dùng
+`pos`, kể cả khi sample cung cấp tọa độ.
 `potentialnet` được chọn tường minh qua `model.name` cho cả `csv_smiles` và
 `pdbbind_complex`. Nó vẫn nằm ngoài benchmark mặc định để benchmark không tự trộn
 ngữ nghĩa ligand-2D và complex-3D; chạy benchmark có model này cần khai báo danh sách
@@ -166,7 +175,8 @@ graph của model.
 | --- | --- | --- |
 | `gcn_baseline` | `x`, `edge_index`, `batch` | Không có |
 | `attentivefp`, `trimnet_2020` | `x`, `edge_index`, `edge_attr`, `batch` | Không có |
-| `dmpnn` | `x`, `edge_index`, `edge_attr`, `reverse_edge_index`, `batch` | `directed_edges` thêm reverse-edge map |
+| `ampnn` | `x`, `edge_index`, `ampnn_edge_type`, `batch` | `ampnn_edge_types` thêm nhãn bond type 2D |
+| `dmpnn`, `emnn` | `x`, `edge_index`, `edge_attr`, `reverse_edge_index`, `batch` | `directed_edges` thêm reverse-edge map |
 | `mpnn` | `x`, `edge_index`, `mpnn_edge_type`, `batch` | `mpnn_edge_types` thêm nhãn bond-type 2D |
 | `mpnn_3d_distance_bins` | `x`, `mpnn_3d_edge_index`, `mpnn_3d_edge_type`, `batch` | `mpnn_3d_distance_bins` cần `pos` float32 `[N, 3]`, tạo all-pairs edge view với 4 bond type và 10 distance bin |
 | `weave` | `x`, `weave_pair_index`, `weave_pair_attr`, `batch` | `weave_inputs` tạo sparse ordered atom-pair view hai chiều, gồm self-pair và các pair cách tối đa hai liên kết |
@@ -180,7 +190,10 @@ số chiều feature phụ thuộc từng core architecture. Khi dùng custom fe
 hãy xem output của `describe-model` thay vì giả định canonical feature schema
 của project là bắt buộc.
 
-- Với D-MPNN, `reverse_edge_index` phải map mỗi directed edge sang đúng cạnh
+- Với AMPNN, `ampnn_edge_type` là nhãn `0..3` cho liên kết single, double,
+  triple hoặc aromatic. Helper bundled lấy các nhãn này từ canonical bond
+  profile; custom featurizer có thể cung cấp trực tiếp tensor tương thích.
+- Với D-MPNN và EMNN, `reverse_edge_index` phải map mỗi directed edge sang đúng cạnh
   đảo chiều và phải là involution: `reverse_edge_index[reverse_edge_index]`
   trả về từng edge ban đầu.
 - Với HiGNN, `brics_edge_index`/`brics_edge_attr` là graph giữ lại sau khi cắt

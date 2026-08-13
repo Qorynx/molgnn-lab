@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from ..registry import available_models, register_model
+from .ampnn_emnn_2020.ampnn import AMPNN
+from .ampnn_emnn_2020.emnn import EMNN
 from .attentivefp_2020 import AttentiveFP
 from .dmpnn_2024 import DMPNN
 from .fragnet_2026 import FragNet
@@ -35,6 +37,15 @@ def register_builtin_models() -> None:
             prediction_reducer_name="identity",
             benchmark_order=20,
         )(AttentiveFP)
+    if "ampnn" not in available_models():
+        register_model(
+            "ampnn",
+            required_batch_fields=AMPNN.required_batch_fields,
+            graph_transform_name="ampnn_edge_types",
+            transform_output_fields=("ampnn_edge_type",),
+            prediction_reducer_name="identity",
+            benchmark_order=25,
+        )(AMPNN)
     if "dmpnn" not in available_models():
         register_model(
             "dmpnn",
@@ -43,6 +54,14 @@ def register_builtin_models() -> None:
             prediction_reducer_name="identity",
             benchmark_order=30,
         )(DMPNN)
+    if "emnn" not in available_models():
+        register_model(
+            "emnn",
+            required_batch_fields=EMNN.required_batch_fields,
+            graph_transform_name="directed_edges",
+            prediction_reducer_name="identity",
+            benchmark_order=35,
+        )(EMNN)
     if "molecular_graph_embedding" not in available_models():
         register_model(
             "molecular_graph_embedding",

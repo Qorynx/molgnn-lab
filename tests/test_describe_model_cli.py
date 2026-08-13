@@ -57,6 +57,49 @@ def test_describe_model_json_exposes_only_the_runtime_contract(capsys) -> None:
     }
 
 
+def test_describe_model_reports_ampnn_contract(capsys) -> None:
+    exit_code = main(["describe-model", "--model", "ampnn", "--format", "json"])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 0
+    assert captured.err == ""
+    assert payload["name"] == "ampnn"
+    assert payload["required_batch_fields"] == [
+        "x",
+        "edge_index",
+        "ampnn_edge_type",
+        "batch",
+    ]
+    assert payload["optional_batch_fields"] == []
+    assert payload["graph_transform_name"] == "ampnn_edge_types"
+    assert payload["prediction_reducer_name"] == "identity"
+    assert payload["benchmark_enabled"] is True
+    assert payload["benchmark_order"] == 25
+
+
+def test_describe_model_reports_emnn_contract(capsys) -> None:
+    exit_code = main(["describe-model", "--model", "emnn", "--format", "json"])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 0
+    assert captured.err == ""
+    assert payload["name"] == "emnn"
+    assert payload["required_batch_fields"] == [
+        "x",
+        "edge_index",
+        "edge_attr",
+        "reverse_edge_index",
+        "batch",
+    ]
+    assert payload["optional_batch_fields"] == []
+    assert payload["graph_transform_name"] == "directed_edges"
+    assert payload["prediction_reducer_name"] == "identity"
+    assert payload["benchmark_enabled"] is True
+    assert payload["benchmark_order"] == 35
+
+
 def test_describe_model_reports_himnet_contract(capsys) -> None:
     exit_code = main(["describe-model", "--model", "himnet", "--format", "json"])
 

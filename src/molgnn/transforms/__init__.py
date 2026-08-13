@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .ampnn import add_ampnn_edge_types
 from .base import GraphTransform, TransformError
 from .brics import add_brics_fragments
 from .coley_2017 import add_coley_2017_features
@@ -31,6 +32,8 @@ def register_builtin_transforms() -> None:
 
     if "directed_edges" not in _TRANSFORMS:
         register_graph_transform("directed_edges", add_reverse_edge_index)
+    if "ampnn_edge_types" not in _TRANSFORMS:
+        register_graph_transform("ampnn_edge_types", add_ampnn_edge_types)
     if "coley_2017_features" not in _TRANSFORMS:
         register_graph_transform("coley_2017_features", add_coley_2017_features)
     if "mpnn_edge_types" not in _TRANSFORMS:
@@ -75,6 +78,7 @@ def _name(value: str) -> str:
 __all__ = [
     "GraphTransform",
     "TransformError",
+    "add_ampnn_edge_types",
     "add_brics_fragments",
     "add_coley_2017_features",
     "add_fragnet_inputs",
