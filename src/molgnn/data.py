@@ -32,6 +32,9 @@ class MolecularData(Data):
     mpnn_edge_type: Tensor
     mpnn_3d_edge_index: Tensor
     mpnn_3d_edge_type: Tensor
+    atomic_number: Tensor
+    dimenet_edge_index: Tensor
+    dimenet_triplet_edge_index: Tensor
     weave_pair_index: Tensor
     weave_pair_attr: Tensor
     pos: Tensor
@@ -58,6 +61,14 @@ class MolecularData(Data):
 
         if key == "reverse_edge_index":
             return self.edge_index.shape[1]
+        if key == "dimenet_triplet_edge_index":
+            dimenet_edge_index = getattr(self, "dimenet_edge_index", None)
+            if not isinstance(dimenet_edge_index, Tensor):
+                raise ValueError(
+                    "MolecularData requires dimenet_edge_index to batch "
+                    "dimenet_triplet_edge_index"
+                )
+            return dimenet_edge_index.shape[1]
         if key == "atom_to_fragment":
             return int(value.max().item()) + 1 if isinstance(value, Tensor) and value.numel() else 0
         if key == "frag_index":
@@ -83,6 +94,8 @@ class MolecularData(Data):
 
         if key in {"reverse_edge_index", "atom_to_fragment"}:
             return 0
+        if key == "dimenet_triplet_edge_index":
+            return 1
         return super().__cat_dim__(key, value, *args, **kwargs)
 
 

@@ -19,6 +19,12 @@ dependencies = [
     "torch-geometric>=2.7,<3",
 ]
 
+[project.optional-dependencies]
+# DimeNet constructs the fixed spherical-Bessel roots at model construction
+# time.  Keeping SciPy optional preserves the lean import/runtime path for
+# the existing 2D architectures.
+dimenet = ["scipy>=1.14,<2"]
+
 [project.scripts]
 molgnn = "molgnn.cli:main"
 

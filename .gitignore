@@ -25,6 +25,12 @@ tests/*
 !tests/test_ampnn_emnn_layers.py
 !tests/test_ampnn_emnn.py
 !tests/test_ampnn_emnn_task_compatibility.py
+!tests/test_dimenet_basis.py
+!tests/test_dimenet_layers.py
+!tests/test_dimenet_transform.py
+!tests/test_dimenet_basis.py
+!tests/test_dimenet_layers.py
+!tests/test_dimenet.py
 uv.lock
 
 # Keep public example and smoke configurations

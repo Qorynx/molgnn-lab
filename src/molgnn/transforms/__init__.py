@@ -6,6 +6,7 @@ from .ampnn import add_ampnn_edge_types
 from .base import GraphTransform, TransformError
 from .brics import add_brics_fragments
 from .coley_2017 import add_coley_2017_features
+from .dimenet import add_dimenet_inputs
 from .directed_edges import add_reverse_edge_index
 from .fragnet import add_fragnet_inputs
 from .himnet import add_himnet_inputs
@@ -42,6 +43,8 @@ def register_builtin_transforms() -> None:
         register_graph_transform(
             "mpnn_3d_distance_bins", add_mpnn_3d_distance_bins_inputs
         )
+    if "dimenet_inputs" not in _TRANSFORMS:
+        register_graph_transform("dimenet_inputs", add_dimenet_inputs)
     if "brics_fragments" not in _TRANSFORMS:
         register_graph_transform("brics_fragments", add_brics_fragments)
     if "himnet_inputs" not in _TRANSFORMS:
@@ -81,6 +84,7 @@ __all__ = [
     "add_ampnn_edge_types",
     "add_brics_fragments",
     "add_coley_2017_features",
+    "add_dimenet_inputs",
     "add_fragnet_inputs",
     "add_himnet_inputs",
     "add_mpnn_3d_distance_bins_inputs",
