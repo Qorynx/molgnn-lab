@@ -69,6 +69,37 @@ def test_builtin_registration_and_context_injection() -> None:
     assert dmpnn_spec.graph_transform_name == "directed_edges"
     assert dmpnn_spec.prediction_reducer_name == "identity"
     assert "reverse_edge_index" in dmpnn_spec.required_batch_fields
+    dimenet = build_model(
+        "dimenet",
+        {
+            "hidden_dim": 8,
+            "num_blocks": 1,
+            "num_bilinear": 2,
+            "num_spherical": 2,
+            "num_radial": 2,
+            "num_before_skip": 1,
+            "num_after_skip": 1,
+            "num_dense_output": 1,
+        },
+        BuildContext(atom_dim=153, bond_dim=14, num_targets=2),
+    )
+    dimenet_spec = get_model_spec("dimenet")
+    assert isinstance(dimenet, nn.Module)
+    assert dimenet_spec.required_batch_fields == (
+        "atomic_number",
+        "pos",
+        "dimenet_edge_index",
+        "dimenet_triplet_edge_index",
+        "batch",
+    )
+    assert dimenet_spec.graph_transform_name == "dimenet_inputs"
+    assert dimenet_spec.transform_output_fields == (
+        "dimenet_edge_index",
+        "dimenet_triplet_edge_index",
+    )
+    assert dimenet_spec.prediction_reducer_name == "identity"
+    assert dimenet_spec.benchmark_enabled is False
+    assert dimenet_spec.benchmark_order == 32
     emnn = build_model(
         "emnn",
         {},
@@ -265,7 +296,7 @@ def test_unknown_model_lists_available_models() -> None:
     register_builtin_models()
     with pytest.raises(
         RegistryError,
-        match="Available models: ampnn, attentivefp, dmpnn, egnn, emnn, fragnet, "
+        match="Available models: ampnn, attentivefp, dimenet, dmpnn, egnn, emnn, fragnet, "
         "gcn_baseline, hignn, himnet, molecular_graph_embedding, mpnn, "
         "mpnn_3d_distance_bins, mvgnn_cross, potentialnet, resgat, trimnet_2020, "
         "weave",

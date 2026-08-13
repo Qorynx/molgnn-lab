@@ -123,6 +123,7 @@ dataset local đều được Git bỏ qua.
 - `gcn_baseline`
 - `attentivefp`
 - `ampnn`
+- `dimenet`
 - `dmpnn`
 - `emnn`
 - `hignn`
@@ -149,6 +150,13 @@ của nó tạo complete graph có hướng không self-loop, gồm bốn bond t
 distance bin; vì vậy chi phí là O(N²). Model dùng được với `pdbbind_complex` hoặc
 custom featurizer cung cấp đủ tọa độ, và cũng nằm ngoài benchmark mặc định. Readout
 của MPNN này dùng toàn bộ atom trong graph, không áp dụng `ligand_mask`.
+
+`dimenet` là model coordinate-backed với contract riêng: `atomic_number`,
+`pos`, directed radius graph 5 Å và non-backtracking triplet index theo edge.
+Nó không suy atomic number từ canonical `x`, không tạo conformer từ SMILES và
+nằm ngoài benchmark mặc định. Structural dataset source native là milestone
+riêng; core hiện dùng được với sample chuẩn bị tường minh hoặc custom
+featurizer cung cấp tọa độ.
 
 ## Kiểm tra input contract
 
@@ -179,6 +187,7 @@ graph của model.
 | `dmpnn`, `emnn` | `x`, `edge_index`, `edge_attr`, `reverse_edge_index`, `batch` | `directed_edges` thêm reverse-edge map |
 | `mpnn` | `x`, `edge_index`, `mpnn_edge_type`, `batch` | `mpnn_edge_types` thêm nhãn bond-type 2D |
 | `mpnn_3d_distance_bins` | `x`, `mpnn_3d_edge_index`, `mpnn_3d_edge_type`, `batch` | `mpnn_3d_distance_bins` cần `pos` float32 `[N, 3]`, tạo all-pairs edge view với 4 bond type và 10 distance bin |
+| `dimenet` | `atomic_number`, `pos`, `dimenet_edge_index`, `dimenet_triplet_edge_index`, `batch` | `dimenet_inputs` cần explicit `atomic_number` và `pos`; tạo radius edge 5 Å và non-backtracking triplet edge-ID view |
 | `weave` | `x`, `weave_pair_index`, `weave_pair_attr`, `batch` | `weave_inputs` tạo sparse ordered atom-pair view hai chiều, gồm self-pair và các pair cách tối đa hai liên kết |
 | `potentialnet` | Bắt buộc: `x`, `potentialnet_bond_edge_index`, `potentialnet_bond_edge_type`, `ligand_mask`, `batch`. Tùy chọn (đi cùng nhau): `potentialnet_stage2_edge_index`, `potentialnet_stage2_edge_type`, `potentialnet_use_spatial` | `potentialnet_inputs` luôn tạo typed covalent graph; có `pos` thì tạo thêm spatial graph, không có `pos` thì dùng nhánh 2D bond-only |
 | `hignn` | `x`, `edge_index`, `edge_attr`, `brics_edge_index`, `brics_edge_attr`, `atom_to_fragment`, `batch` | `brics_fragments` thêm BRICS fragment view |
@@ -205,6 +214,10 @@ của project là bắt buộc.
 - Với `mpnn_3d_distance_bins`, các cạnh covalent giữ nhãn single/double/triple/
   aromatic; mọi pair atom còn lại nhận một trong mười distance bin. Helper nhận
   canonical 14-wide bond features hoặc profile 5-wide của `pdbbind_complex`.
+- Với DimeNet, `dimenet_triplet_edge_index` index các DimeNet radius edge (không
+  phải atom): hàng đầu là `k -> j`, hàng hai là `j -> i`. Transform chạy trước
+  PyG batching để offset edge-ID đúng; khoảng cách và góc vẫn được tính trong
+  model để giữ coordinate gradient.
 - Với PotentialNet, Stage 1 chỉ nhận covalent typed edges. Nếu có spatial fields,
   Stage 2 nhận cả spatial distance-bin và covalent typed edges; nếu không có, Stage 2
   bị bỏ qua thay vì nhận một graph covalent giả. Readout chỉ sum atom có

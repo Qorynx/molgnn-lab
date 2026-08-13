@@ -4,6 +4,7 @@ import torch
 from torch_geometric.loader import DataLoader
 
 from molgnn.featurizer import featurize_smiles
+from molgnn.models.dimenet_2020 import DimeNet2020
 from molgnn.models.hignn_2023 import HiGNN
 from molgnn.models.himnet_2026 import HimNet
 from molgnn.models.mpnn_2017 import MPNN, MPNNDistanceBins3D
@@ -31,6 +32,7 @@ def test_builtin_models_expose_runtime_input_contracts() -> None:
         "ampnn",
         "gcn_baseline",
         "attentivefp",
+        "dimenet",
         "dmpnn",
         "emnn",
         "hignn",
@@ -237,3 +239,32 @@ def test_potentialnet_keeps_two_tied_stages_and_ligand_only_readout() -> None:
     assert model.stage1.gate.gate_network.in_features == 44 + 48
     assert model.stage2.gate.gate_network.in_features == 48 + 48
     assert model.readout.input_dim == 48
+
+
+def test_dimenet_keeps_directed_edge_states_and_independent_block_stacks() -> None:
+    model = DimeNet2020(
+        hidden_dim=8,
+        num_blocks=2,
+        num_bilinear=3,
+        num_spherical=2,
+        num_radial=2,
+        num_before_skip=1,
+        num_after_skip=1,
+        num_dense_output=1,
+        num_targets=1,
+    )
+
+    assert model.required_batch_fields == (
+        "atomic_number",
+        "pos",
+        "dimenet_edge_index",
+        "dimenet_triplet_edge_index",
+        "batch",
+    )
+    assert model.cutoff == 5.0
+    assert model.envelope_p == 6
+    assert len(model.interaction_blocks) == 2
+    assert len(model.output_blocks) == 3
+    assert model.interaction_blocks[0] is not model.interaction_blocks[1]
+    assert model.interaction_blocks[0].bilinear.shape == (8, 3, 8)
+    assert model.output_blocks[0].output_projection.bias is None

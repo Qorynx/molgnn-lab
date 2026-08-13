@@ -6,6 +6,7 @@ from ..registry import available_models, register_model
 from .ampnn_emnn_2020.ampnn import AMPNN
 from .ampnn_emnn_2020.emnn import EMNN
 from .attentivefp_2020 import AttentiveFP
+from .dimenet_2020 import DimeNet2020
 from .dmpnn_2024 import DMPNN
 from .egnn_2021 import EGNN
 from .fragnet_2026 import FragNet
@@ -55,6 +56,19 @@ def register_builtin_models() -> None:
             prediction_reducer_name="identity",
             benchmark_order=30,
         )(DMPNN)
+    if "dimenet" not in available_models():
+        register_model(
+            "dimenet",
+            required_batch_fields=DimeNet2020.required_batch_fields,
+            graph_transform_name="dimenet_inputs",
+            transform_output_fields=(
+                "dimenet_edge_index",
+                "dimenet_triplet_edge_index",
+            ),
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=32,
+        )(DimeNet2020)
     if "emnn" not in available_models():
         register_model(
             "emnn",

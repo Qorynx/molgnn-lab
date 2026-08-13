@@ -13,6 +13,7 @@ from molgnn.models.attentivefp_2020 import AttentiveFP
 from molgnn.models.ampnn_emnn_2020 import AMPNN, EMNN
 from molgnn.models.contracts import validate_batched_molecular_graph
 from molgnn.models.dmpnn_2024 import DMPNN
+from molgnn.models.dimenet_2020 import DimeNet2020
 from molgnn.models.gcn_baseline import GCNBaseline
 from molgnn.models.hignn_2023 import HiGNN
 from molgnn.models.himnet_2026 import HimNet
@@ -24,6 +25,7 @@ from molgnn.models.weave_2016 import Weave
 from molgnn.transforms import (
     add_brics_fragments,
     add_coley_2017_features,
+    add_dimenet_inputs,
     add_himnet_inputs,
     add_ampnn_edge_types,
     add_mpnn_edge_types,
@@ -60,6 +62,29 @@ def _potentialnet_batch() -> Batch:
             ligand_mask=torch.tensor([True, True, False]),
         )
         samples.append(add_potentialnet_inputs(sample))
+    return Batch.from_data_list(list[BaseData](samples))
+
+
+def _dimenet_batch() -> Batch:
+    samples = []
+    for sample_id, shift in enumerate((0.0, 8.0)):
+        samples.append(
+            add_dimenet_inputs(
+                MolecularData(
+                    x=torch.zeros((3, 1), dtype=torch.float32),
+                    edge_index=torch.empty((2, 0), dtype=torch.long),
+                    edge_attr=torch.empty((0, 1), dtype=torch.float32),
+                    y=torch.zeros((1, 1), dtype=torch.float32),
+                    y_mask=torch.ones((1, 1), dtype=torch.bool),
+                    sample_id=torch.tensor([sample_id], dtype=torch.long),
+                    atomic_number=torch.tensor([6, 7, 8], dtype=torch.long),
+                    pos=torch.tensor(
+                        [[shift, 0.0, 0.0], [shift + 1.0, 0.0, 0.0], [shift, 1.0, 0.0]],
+                        dtype=torch.float32,
+                    ),
+                )
+            )
+        )
     return Batch.from_data_list(list[BaseData](samples))
 
 
@@ -306,6 +331,29 @@ def test_hignn_also_rejects_cross_graph_brics_edges() -> None:
         ValueError, match=r"brics_edge_index must not connect different graphs"
     ):
         model(batch)
+
+
+def test_dimenet_rejects_cross_graph_radius_edges() -> None:
+    batch = _dimenet_batch()
+    model = DimeNet2020(
+        hidden_dim=4,
+        num_blocks=1,
+        num_bilinear=2,
+        num_spherical=2,
+        num_radial=2,
+        num_before_skip=1,
+        num_after_skip=1,
+        num_dense_output=1,
+    )
+    assert model(batch).shape == (2, 1)
+
+    invalid = batch.clone()
+    invalid.dimenet_edge_index = batch.dimenet_edge_index.clone()
+    invalid.dimenet_edge_index[1, 0] = 3
+    with pytest.raises(
+        ValueError, match=r"dimenet_edge_index must not connect different graphs"
+    ):
+        model(invalid)
 
 
 def test_himnet_accepts_its_prepared_contract_and_rejects_cross_graph_edges() -> None:
