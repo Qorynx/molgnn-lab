@@ -100,6 +100,37 @@ def test_builtin_registration_and_context_injection() -> None:
     assert dimenet_spec.prediction_reducer_name == "identity"
     assert dimenet_spec.benchmark_enabled is False
     assert dimenet_spec.benchmark_order == 32
+    gpspp = build_model(
+        "gpspp",
+        {
+            "node_dim": 8,
+            "edge_dim": 4,
+            "global_dim": 4,
+            "depth": 1,
+            "num_heads": 2,
+            "max_spd": 4,
+            "decoder_hidden_dim": 8,
+        },
+        BuildContext(atom_dim=153, bond_dim=14, num_targets=2),
+    )
+    gpspp_spec = get_model_spec("gpspp")
+    assert isinstance(gpspp, nn.Module)
+    assert gpspp_spec.required_batch_fields == (
+        "x",
+        "edge_index",
+        "edge_attr",
+        "gpspp_pair_index",
+        "gpspp_spd",
+        "batch",
+    )
+    assert gpspp_spec.graph_transform_name == "gpspp_inputs"
+    assert gpspp_spec.transform_output_fields == (
+        "gpspp_pair_index",
+        "gpspp_spd",
+    )
+    assert gpspp_spec.prediction_reducer_name == "identity"
+    assert gpspp_spec.benchmark_enabled is False
+    assert gpspp_spec.benchmark_order == 67
     emnn = build_model(
         "emnn",
         {},
@@ -297,7 +328,7 @@ def test_unknown_model_lists_available_models() -> None:
     with pytest.raises(
         RegistryError,
         match="Available models: ampnn, attentivefp, dimenet, dmpnn, emnn, fragnet, "
-        "gcn_baseline, hignn, himnet, molecular_graph_embedding, mpnn, "
+        "gcn_baseline, gpspp, hignn, himnet, molecular_graph_embedding, mpnn, "
         "mpnn_3d_distance_bins, mvgnn_cross, potentialnet, resgat, trimnet_2020, "
         "weave",
     ):

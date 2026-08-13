@@ -31,6 +31,9 @@ tests/*
 !tests/test_dimenet_basis.py
 !tests/test_dimenet_layers.py
 !tests/test_dimenet.py
+!tests/test_gpspp_layers.py
+!tests/test_gpspp_transform.py
+!tests/test_gpspp.py
 uv.lock
 
 # Keep public example and smoke configurations

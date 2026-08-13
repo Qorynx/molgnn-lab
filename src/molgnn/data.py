@@ -35,6 +35,8 @@ class MolecularData(Data):
     atomic_number: Tensor
     dimenet_edge_index: Tensor
     dimenet_triplet_edge_index: Tensor
+    gpspp_pair_index: Tensor
+    gpspp_spd: Tensor
     weave_pair_index: Tensor
     weave_pair_attr: Tensor
     pos: Tensor

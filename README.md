@@ -126,6 +126,7 @@ dataset local đều được Git bỏ qua.
 - `dimenet`
 - `dmpnn`
 - `emnn`
+- `gpspp`
 - `hignn`
 - `himnet`
 - `molecular_graph_embedding`
@@ -158,6 +159,12 @@ nằm ngoài benchmark mặc định. Structural dataset source native là miles
 riêng; core hiện dùng được với sample chuẩn bị tường minh hoặc custom
 featurizer cung cấp tọa độ.
 
+`gpspp` là core hybrid 2D gồm local MPNN, biased global self-attention và
+FFN. Helper của nó tạo all-pairs atom view cùng shortest-path distance cho
+attention bias; nó không tự suy diễn hoặc dùng tọa độ `pos`. Do global
+attention có chi phí O(N²), model này nằm ngoài benchmark mặc định và cần được
+chọn tường minh trong `models` khi benchmark.
+
 ## Kiểm tra input contract
 
 Lệnh `describe-model` chỉ in ra contract runtime công khai của một model đã
@@ -188,6 +195,7 @@ graph của model.
 | `mpnn` | `x`, `edge_index`, `mpnn_edge_type`, `batch` | `mpnn_edge_types` thêm nhãn bond-type 2D |
 | `mpnn_3d_distance_bins` | `x`, `mpnn_3d_edge_index`, `mpnn_3d_edge_type`, `batch` | `mpnn_3d_distance_bins` cần `pos` float32 `[N, 3]`, tạo all-pairs edge view với 4 bond type và 10 distance bin |
 | `dimenet` | `atomic_number`, `pos`, `dimenet_edge_index`, `dimenet_triplet_edge_index`, `batch` | `dimenet_inputs` cần explicit `atomic_number` và `pos`; tạo radius edge 5 Å và non-backtracking triplet edge-ID view |
+| `gpspp` | `x`, `edge_index`, `edge_attr`, `gpspp_pair_index`, `gpspp_spd`, `batch` | `gpspp_inputs` tạo tất cả ordered atom pairs (gồm self-pair) và shortest-path distance topological cho attention bias |
 | `weave` | `x`, `weave_pair_index`, `weave_pair_attr`, `batch` | `weave_inputs` tạo sparse ordered atom-pair view hai chiều, gồm self-pair và các pair cách tối đa hai liên kết |
 | `potentialnet` | Bắt buộc: `x`, `potentialnet_bond_edge_index`, `potentialnet_bond_edge_type`, `ligand_mask`, `batch`. Tùy chọn (đi cùng nhau): `potentialnet_stage2_edge_index`, `potentialnet_stage2_edge_type`, `potentialnet_use_spatial` | `potentialnet_inputs` luôn tạo typed covalent graph; có `pos` thì tạo thêm spatial graph, không có `pos` thì dùng nhánh 2D bond-only |
 | `hignn` | `x`, `edge_index`, `edge_attr`, `brics_edge_index`, `brics_edge_attr`, `atom_to_fragment`, `batch` | `brics_fragments` thêm BRICS fragment view |

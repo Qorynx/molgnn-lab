@@ -9,6 +9,7 @@ from .attentivefp_2020 import AttentiveFP
 from .dimenet_2020 import DimeNet2020
 from .dmpnn_2024 import DMPNN
 from .fragnet_2026 import FragNet
+from .gpspp_2023 import GPSPlusPlus
 from .gcn_baseline import GCNBaseline
 from .hignn_2023 import HiGNN
 from .himnet_2026 import HimNet
@@ -129,6 +130,16 @@ def register_builtin_models() -> None:
             prediction_reducer_name="identity",
             benchmark_order=65,
         )(Weave)
+    if "gpspp" not in available_models():
+        register_model(
+            "gpspp",
+            required_batch_fields=GPSPlusPlus.required_batch_fields,
+            graph_transform_name="gpspp_inputs",
+            transform_output_fields=("gpspp_pair_index", "gpspp_spd"),
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=67,
+        )(GPSPlusPlus)
     if "himnet" not in available_models():
         register_model(
             "himnet",

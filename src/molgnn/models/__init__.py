@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from .dmpnn_2024 import DMPNNData as DMPNNData
     from .dimenet_2020 import DimeNet2020 as DimeNet2020
     from .dimenet_2020 import DimeNetData as DimeNetData
+    from .gpspp_2023 import GPSPlusPlus as GPSPlusPlus
     from .fragnet_2026 import FragNet as FragNet
     from .gcn_baseline import GCNBaseline as GCNBaseline
     from .hignn_2023 import FeatureAttention as FeatureAttention
@@ -46,6 +47,7 @@ _EXPORTS = {
     "DMPNNData": (".dmpnn_2024", "DMPNNData"),
     "DimeNet2020": (".dimenet_2020", "DimeNet2020"),
     "DimeNetData": (".dimenet_2020", "DimeNetData"),
+    "GPSPlusPlus": (".gpspp_2023", "GPSPlusPlus"),
     "EMNN": (".ampnn_emnn_2020.emnn", "EMNN"),
     "EMNNData": (".ampnn_emnn_2020.data", "EMNNData"),
     "FragNet": (".fragnet_2026", "FragNet"),
@@ -98,6 +100,7 @@ __all__ = (
     "FragNet",
     "FeatureAttention",
     "GCNBaseline",
+    "GPSPlusPlus",
     "HiGNN",
     "HiGNNData",
     "HimNet",

@@ -35,6 +35,7 @@ def test_builtin_models_expose_runtime_input_contracts() -> None:
         "dimenet",
         "dmpnn",
         "emnn",
+        "gpspp",
         "hignn",
         "himnet",
         "molecular_graph_embedding",
