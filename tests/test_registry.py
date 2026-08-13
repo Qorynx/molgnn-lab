@@ -137,6 +137,33 @@ def test_builtin_registration_and_context_injection() -> None:
     )
     assert trimnet_spec.graph_transform_name is None
     assert trimnet_spec.prediction_reducer_name == "identity"
+    weave = build_model(
+        "weave",
+        {
+            "hidden_dim": 8,
+            "num_weave_modules": 1,
+            "graph_feature_dim": 8,
+            "predictor_hidden_dims": (8,),
+            "dropout": 0.0,
+        },
+        BuildContext(atom_dim=153, bond_dim=14, num_targets=2),
+    )
+    weave_spec = get_model_spec("weave")
+    assert isinstance(weave, nn.Module)
+    assert weave_spec.required_batch_fields == (
+        "x",
+        "weave_pair_index",
+        "weave_pair_attr",
+        "batch",
+    )
+    assert weave_spec.graph_transform_name == "weave_inputs"
+    assert weave_spec.transform_output_fields == (
+        "weave_pair_index",
+        "weave_pair_attr",
+    )
+    assert weave_spec.prediction_reducer_name == "identity"
+    assert weave_spec.benchmark_enabled is True
+    assert weave_spec.benchmark_order == 65
     himnet = build_model(
         "himnet",
         {
@@ -153,6 +180,20 @@ def test_builtin_registration_and_context_injection() -> None:
     assert himnet_spec.graph_transform_name == "himnet_inputs"
     assert himnet_spec.prediction_reducer_name == "identity"
     assert "himnet_fp" in himnet_spec.required_batch_fields
+    fragnet_spec = get_model_spec("fragnet")
+    assert fragnet_spec.graph_transform_name == "fragnet_inputs"
+    assert fragnet_spec.transform_output_fields == (
+        "frag_index",
+        "x_frags",
+        "atom_to_fragment",
+        "frag_batch",
+        "edge_index_bonds_graph",
+        "edge_attr_bonds",
+        "frag_connection_features",
+        "edge_index_fbonds",
+        "edge_attr_fbonds",
+    )
+    assert fragnet_spec.benchmark_enabled is False
     potentialnet = build_model(
         "potentialnet",
         {
@@ -190,7 +231,7 @@ def test_unknown_model_lists_available_models() -> None:
         RegistryError,
         match="Available models: attentivefp, dmpnn, fragnet, gcn_baseline, "
         "hignn, himnet, molecular_graph_embedding, mpnn, mpnn_3d_distance_bins, "
-        "mvgnn_cross, potentialnet, resgat, trimnet_2020",
+        "mvgnn_cross, potentialnet, resgat, trimnet_2020, weave",
     ):
         build_model("missing", {}, BuildContext(1, 1, 1))
 
@@ -212,10 +253,10 @@ def test_benchmark_selection_uses_default_order_and_preserves_explicit_order() -
         "mpnn",
         "molecular_graph_embedding",
         "trimnet_2020",
+        "weave",
         "himnet",
         "resgat",
         "mvgnn_cross",
-        "fragnet",
     )
     assert tuple(
         spec.name for spec in resolve_benchmark_models(("dmpnn", "gcn_baseline"))

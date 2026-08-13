@@ -124,7 +124,10 @@ dataset local đều được Git bỏ qua.
 - `mpnn`
 - `mpnn_3d_distance_bins`
 - `potentialnet`
+- `resgat`
+- `fragnet`
 - `trimnet_2020`
+- `weave`
 
 Tên mô hình được đặt tại `model.name`; tham số kiến trúc được truyền qua
 `model.parameters`.
@@ -166,6 +169,7 @@ graph của model.
 | `dmpnn` | `x`, `edge_index`, `edge_attr`, `reverse_edge_index`, `batch` | `directed_edges` thêm reverse-edge map |
 | `mpnn` | `x`, `edge_index`, `mpnn_edge_type`, `batch` | `mpnn_edge_types` thêm nhãn bond-type 2D |
 | `mpnn_3d_distance_bins` | `x`, `mpnn_3d_edge_index`, `mpnn_3d_edge_type`, `batch` | `mpnn_3d_distance_bins` cần `pos` float32 `[N, 3]`, tạo all-pairs edge view với 4 bond type và 10 distance bin |
+| `weave` | `x`, `weave_pair_index`, `weave_pair_attr`, `batch` | `weave_inputs` tạo sparse ordered atom-pair view hai chiều, gồm self-pair và các pair cách tối đa hai liên kết |
 | `potentialnet` | Bắt buộc: `x`, `potentialnet_bond_edge_index`, `potentialnet_bond_edge_type`, `ligand_mask`, `batch`. Tùy chọn (đi cùng nhau): `potentialnet_stage2_edge_index`, `potentialnet_stage2_edge_type`, `potentialnet_use_spatial` | `potentialnet_inputs` luôn tạo typed covalent graph; có `pos` thì tạo thêm spatial graph, không có `pos` thì dùng nhánh 2D bond-only |
 | `hignn` | `x`, `edge_index`, `edge_attr`, `brics_edge_index`, `brics_edge_attr`, `atom_to_fragment`, `batch` | `brics_fragments` thêm BRICS fragment view |
 | `himnet` | `himnet_x`, `himnet_edge_index`, `himnet_edge_attr`, `himnet_reverse_edge_index`, `himnet_node_batch`, `himnet_node_type`, `himnet_fp` | `himnet_inputs` thêm unified hierarchy và fingerprint views |
@@ -195,6 +199,16 @@ của project là bắt buộc.
   profile spatial tương thích DGL-LifeSci (cutoff 4.5 Å, bốn bins và tối đa bốn
   incoming neighbours), nhưng giữ các relation đồng thời thành cạnh song song thay vì
   ghi đè chúng.
+
+## Contract tọa độ của FragNet
+
+`fragnet` yêu cầu sample chưa được batch có `smiles`, `x` và `pos` float32 hữu hạn
+`[N, 3]` cùng mô tả một tập atom theo đúng thứ tự. Helper `fragnet_inputs` tạo các
+view BRICS, fragment và cosine bond-angle từ các tọa độ được cung cấp. Nó không tự
+embed hay tối ưu conformer. `pdbbind_complex` hiện chưa tương thích trực tiếp vì
+SMILES của source đó chỉ mô tả ligand, còn `x`/`pos` bao gồm cả ligand–pocket; hãy
+dùng source hoặc custom sample có SMILES, graph và tọa độ đồng nhất. FragNet nằm
+ngoài benchmark mặc định.
 
 ## Hook tùy biến cho `molgnn train`
 

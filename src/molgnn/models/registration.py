@@ -15,6 +15,7 @@ from .mvgnn_2020 import MVGNNcross
 from .potentialnet_2018 import PotentialNet
 from .resgat_2024 import ResGAT
 from .trimnet_2020 import TrimNet2020
+from .weave_2016 import Weave
 
 
 def register_builtin_models() -> None:
@@ -86,6 +87,15 @@ def register_builtin_models() -> None:
             prediction_reducer_name="identity",
             benchmark_order=60,
         )(TrimNet2020)
+    if "weave" not in available_models():
+        register_model(
+            "weave",
+            required_batch_fields=Weave.required_batch_fields,
+            graph_transform_name="weave_inputs",
+            transform_output_fields=("weave_pair_index", "weave_pair_attr"),
+            prediction_reducer_name="identity",
+            benchmark_order=65,
+        )(Weave)
     if "himnet" not in available_models():
         register_model(
             "himnet",
@@ -99,7 +109,19 @@ def register_builtin_models() -> None:
             "fragnet",
             required_batch_fields=FragNet.required_batch_fields,
             graph_transform_name="fragnet_inputs",
+            transform_output_fields=(
+                "frag_index",
+                "x_frags",
+                "atom_to_fragment",
+                "frag_batch",
+                "edge_index_bonds_graph",
+                "edge_attr_bonds",
+                "frag_connection_features",
+                "edge_index_fbonds",
+                "edge_attr_fbonds",
+            ),
             prediction_reducer_name="identity",
+            benchmark_enabled=False,
             benchmark_order=80,
         )(FragNet)
     if "potentialnet" not in available_models():

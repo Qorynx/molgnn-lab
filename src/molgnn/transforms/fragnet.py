@@ -16,11 +16,9 @@ added separately.
 
 from __future__ import annotations
 
-import math
-
 import torch
 from rdkit import Chem
-from rdkit.Chem import AllChem, BRICS, rdMolTransforms
+from rdkit.Chem import BRICS
 from torch import Tensor
 from torch_geometric.utils import scatter
 
@@ -40,51 +38,64 @@ _BOND_TYPE_ORDER: tuple[Chem.BondType, ...] = (
 def add_fragnet_inputs(data: MolecularData) -> MolecularData:
     """Clone a canonical graph and attach its FragNet multi-graph view.
 
-    Reads ``data.smiles``, ``data.x``, ``data.edge_index`` and
-    ``data.edge_attr`` and sets the following fields on the returned clone:
+    Reads ``data.smiles``, ``data.x``, ``data.edge_index``, ``data.edge_attr``
+    and supplied ``data.pos`` coordinates, then sets the following fields on
+    the returned clone:
 
     * ``frag_index`` / ``atom_to_fragment`` / ``x_frags`` / ``frag_batch``:
       fragment graph derived from BRICS connected components,
     * ``edge_index_bonds_graph`` / ``edge_attr_bonds``: bond (line) graph with
-      ``cos(bond angle)`` edge features from a deterministic 3D conformer,
+      ``cos(bond angle)`` edge features from the supplied coordinates,
     * ``frag_connection_features`` / ``edge_index_fbonds`` /
       ``edge_attr_fbonds``: bipartite fragment-connection graph.
 
     All produced tensors live on the same device as ``data.x``.
     """
 
+    sample = _sample_id(data)
+    if getattr(data, "batch", None) is not None:
+        raise TransformError(
+            f"sample {sample} is already batched; FragNet inputs must be derived before batching"
+        )
     smiles = getattr(data, "smiles", None)
     if not isinstance(smiles, str) or not smiles:
-        raise TransformError(f"sample {_sample_id(data)} is missing source SMILES metadata")
+        raise TransformError(f"sample {sample} is missing source SMILES metadata")
 
     x = getattr(data, "x", None)
     edge_index = getattr(data, "edge_index", None)
     edge_attr = getattr(data, "edge_attr", None)
+    pos = getattr(data, "pos", None)
     if not isinstance(x, Tensor) or x.ndim != 2:
-        raise TransformError(f"sample {_sample_id(data)} has invalid x")
+        raise TransformError(f"sample {sample} has invalid x")
     if not isinstance(edge_index, Tensor) or edge_index.ndim != 2 or edge_index.shape[0] != 2:
-        raise TransformError(f"sample {_sample_id(data)} has invalid edge_index")
+        raise TransformError(f"sample {sample} has invalid edge_index")
     if edge_index.dtype != torch.long:
-        raise TransformError(f"sample {_sample_id(data)} edge_index must have dtype torch.long")
+        raise TransformError(f"sample {sample} edge_index must have dtype torch.long")
     if not isinstance(edge_attr, Tensor) or edge_attr.ndim != 2:
-        raise TransformError(f"sample {_sample_id(data)} has invalid edge_attr")
+        raise TransformError(f"sample {sample} has invalid edge_attr")
     if edge_attr.shape[0] != edge_index.shape[1]:
-        raise TransformError(f"sample {_sample_id(data)} has mismatched edge feature count")
+        raise TransformError(f"sample {sample} has mismatched edge feature count")
+    if (
+        not isinstance(pos, Tensor)
+        or pos.shape != (x.shape[0], 3)
+        or pos.dtype != torch.float32
+        or pos.device != x.device
+        or not torch.isfinite(pos).all()
+    ):
+        raise TransformError(
+            f"sample {sample} requires finite float32 pos with shape [N, 3]"
+        )
 
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
-        raise TransformError(f"sample {_sample_id(data)} has invalid source SMILES")
+        raise TransformError(f"sample {sample} has invalid source SMILES")
     if mol.GetNumAtoms() != x.shape[0]:
-        raise TransformError(f"sample {_sample_id(data)} source SMILES atom count does not match x")
+        raise TransformError(f"sample {sample} source SMILES atom count does not match x")
 
     device = x.device
     num_atoms = int(x.shape[0])
     edge_src = edge_index[0]
     edge_dst = edge_index[1]
-
-    # ---- 3D conformer for bond-angle features (None if embedding fails). ----
-    # Reuse the parsed mol so we don't run RDKit parsing twice for each sample.
-    conf = _embed_conformer(mol)
 
     # ---- Fragment graph from BRICS connected components. ---------------------
     cut_bonds = frozenset(frozenset(pair) for pair, _labels in BRICS.FindBRICSBonds(mol))
@@ -160,23 +171,15 @@ def add_fragnet_inputs(data: MolecularData) -> MolecularData:
     else:
         edge_index_bonds_graph = torch.empty((2, 0), dtype=torch.long, device=device)
 
-    if conf is None or num_line_edges == 0:
-        edge_attr_bonds = torch.zeros((num_line_edges, 1), dtype=torch.float32, device=device)
-    else:
-        angle_features: list[float] = []
-        for e1, e2, i in zip(lb_src, lb_dst, lb_atom):
-            j = int(edge_dst[e1])
-            k = int(edge_src[e2])
-            if j == k:
-                # The two directed bonds are the reverse of the same bond: the
-                # angle is undefined for a one-bond fragment, so use 1.0.
-                angle_features.append(1.0)
-            else:
-                angle = rdMolTransforms.GetAngleRad(conf, j, i, k)
-                angle_features.append(math.cos(angle))
-        edge_attr_bonds = torch.tensor(
-            angle_features, dtype=torch.float32, device=device
-        ).reshape(-1, 1)
+    edge_attr_bonds = _bond_angle_features(
+        pos,
+        lb_src,
+        lb_dst,
+        lb_atom,
+        edge_src,
+        edge_dst,
+        sample=sample,
+    )
 
     # ---- Fragment-connection graph (connection ↔ connection edges). -----------
     # The upstream builds a graph whose nodes are connections and whose edges
@@ -240,31 +243,50 @@ def _connection_feature(bond_type: Chem.BondType, *, device: torch.device) -> Te
     return torch.tensor(one_hot, dtype=torch.float32, device=device)
 
 
-def _embed_conformer(mol: Chem.Mol) -> Chem.Conformer | None:
-    """Embed a deterministic 3D conformer for bond-angle features.
+def _bond_angle_features(
+    pos: Tensor,
+    line_sources: list[int],
+    line_targets: list[int],
+    centers: list[int],
+    edge_source: Tensor,
+    edge_target: Tensor,
+    *,
+    sample: int | str,
+) -> Tensor:
+    """Return cosine-angle attributes for the directed bond-line graph."""
 
-    Uses ETKDG with a fixed seed (falling back to a second fixed seed). Returns
-    ``None`` when no conformer could be embedded; callers then fall back to
-    zero bond-angle features.
-    """
+    line_edge_count = len(line_sources)
+    if not line_edge_count:
+        return torch.empty((0, 1), dtype=torch.float32, device=pos.device)
+    first_atoms = torch.tensor(
+        [int(edge_target[index]) for index in line_sources],
+        dtype=torch.long,
+        device=pos.device,
+    )
+    second_atoms = torch.tensor(
+        [int(edge_source[index]) for index in line_targets],
+        dtype=torch.long,
+        device=pos.device,
+    )
+    center_atoms = torch.tensor(centers, dtype=torch.long, device=pos.device)
+    repeated_bond = first_atoms == second_atoms
+    features = torch.ones(line_edge_count, dtype=torch.float32, device=pos.device)
+    valid = ~repeated_bond
+    if not bool(valid.any()):
+        return features.unsqueeze(-1)
 
-    mol_h = Chem.AddHs(mol)
-
-    params = AllChem.ETKDGv3()
-    params.randomSeed = 42
-    status = AllChem.EmbedMolecule(mol_h, params)
-    if status == -1:
-        params = AllChem.ETKDGv3()
-        params.randomSeed = 1
-        status = AllChem.EmbedMolecule(mol_h, params)
-    if status == -1:
-        return None
-
-    try:
-        AllChem.MMFFOptimizeMolecule(mol_h)
-    except Exception:  # noqa: BLE001 - 3D geometry is best-effort here
-        pass
-    return mol_h.GetConformer()
+    first_vectors = pos[first_atoms[valid]] - pos[center_atoms[valid]]
+    second_vectors = pos[second_atoms[valid]] - pos[center_atoms[valid]]
+    denominator = torch.linalg.vector_norm(first_vectors, dim=-1) * torch.linalg.vector_norm(
+        second_vectors, dim=-1
+    )
+    if bool((denominator == 0).any()):
+        raise TransformError(
+            f"sample {sample} has coincident atoms in a FragNet bond angle"
+        )
+    cosine = (first_vectors * second_vectors).sum(dim=-1) / denominator
+    features[valid] = cosine.clamp(-1, 1)
+    return features.unsqueeze(-1)
 
 
 def _connected_components(

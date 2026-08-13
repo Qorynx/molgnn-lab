@@ -20,6 +20,8 @@ tests/*
 !tests/test_mpnn_3d.py
 !tests/test_potentialnet.py
 !tests/test_registry.py
+!tests/test_fragnet.py
+!tests/test_weave.py
 uv.lock
 
 # Keep only the public example configuration
