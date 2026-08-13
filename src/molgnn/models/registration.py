@@ -7,6 +7,7 @@ from .ampnn_emnn_2020.ampnn import AMPNN
 from .ampnn_emnn_2020.emnn import EMNN
 from .attentivefp_2020 import AttentiveFP
 from .dmpnn_2024 import DMPNN
+from .egnn_2021 import EGNN
 from .fragnet_2026 import FragNet
 from .gcn_baseline import GCNBaseline
 from .hignn_2023 import HiGNN
@@ -179,6 +180,15 @@ def register_builtin_models() -> None:
             prediction_reducer_name="identity",
             benchmark_order=76,
         )(MVGNNcross)
+    if "egnn" not in available_models():
+        register_model(
+            "egnn",
+            required_batch_fields=EGNN.required_batch_fields,
+            graph_transform_name="egnn_inputs",
+            transform_output_fields=("pos",),
+            prediction_reducer_name="identity",
+            benchmark_order=77,
+        )(EGNN)
 
 
 __all__ = ["register_builtin_models"]

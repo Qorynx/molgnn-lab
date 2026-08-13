@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from .base import BaseMolecularModel as BaseMolecularModel
     from .dmpnn_2024 import DMPNN as DMPNN
     from .dmpnn_2024 import DMPNNData as DMPNNData
+    from .egnn_2021 import EGNN as EGNN
     from .fragnet_2026 import FragNet as FragNet
     from .gcn_baseline import GCNBaseline as GCNBaseline
     from .hignn_2023 import FeatureAttention as FeatureAttention
@@ -42,6 +43,7 @@ _EXPORTS = {
     "ColeyGraphConv": (".molecular_graph_embedding_2017", "ColeyGraphConv"),
     "DMPNN": (".dmpnn_2024", "DMPNN"),
     "DMPNNData": (".dmpnn_2024", "DMPNNData"),
+    "EGNN": (".egnn_2021", "EGNN"),
     "EMNN": (".ampnn_emnn_2020.emnn", "EMNN"),
     "EMNNData": (".ampnn_emnn_2020.data", "EMNNData"),
     "FragNet": (".fragnet_2026", "FragNet"),
@@ -87,6 +89,7 @@ __all__ = (
     "BaseMolecularModel",
     "ColeyGraphConv",
     "DMPNNData",
+    "EGNN",
     "EMNN",
     "EMNNData",
     "FragNet",

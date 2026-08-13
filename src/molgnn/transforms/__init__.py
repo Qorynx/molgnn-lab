@@ -7,6 +7,7 @@ from .base import GraphTransform, TransformError
 from .brics import add_brics_fragments
 from .coley_2017 import add_coley_2017_features
 from .directed_edges import add_reverse_edge_index
+from .egnn import add_egnn_inputs
 from .fragnet import add_fragnet_inputs
 from .himnet import add_himnet_inputs
 from .mpnn import add_mpnn_3d_distance_bins_inputs, add_mpnn_edge_types
@@ -52,6 +53,8 @@ def register_builtin_transforms() -> None:
         register_graph_transform("potentialnet_inputs", add_potentialnet_inputs)
     if "weave_inputs" not in _TRANSFORMS:
         register_graph_transform("weave_inputs", add_weave_inputs)
+    if "egnn_inputs" not in _TRANSFORMS:
+        register_graph_transform("egnn_inputs", add_egnn_inputs)
 
 
 def get_graph_transform(name: str | None) -> GraphTransform | None:
@@ -81,6 +84,7 @@ __all__ = [
     "add_ampnn_edge_types",
     "add_brics_fragments",
     "add_coley_2017_features",
+    "add_egnn_inputs",
     "add_fragnet_inputs",
     "add_himnet_inputs",
     "add_mpnn_3d_distance_bins_inputs",
