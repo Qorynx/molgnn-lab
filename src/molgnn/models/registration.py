@@ -14,6 +14,7 @@ from .gpspp_2023 import GPSPlusPlus
 from .gcn_baseline import GCNBaseline
 from .hignn_2023 import HiGNN
 from .himnet_2026 import HimNet
+from .mat_2020 import MAT
 from .molecular_graph_embedding_2017 import MolecularGraphEmbedding
 from .mpnn_2017 import MPNN, MPNNDistanceBins3D
 from .mvgnn_2020 import MVGNNcross
@@ -225,6 +226,14 @@ def register_builtin_models() -> None:
             prediction_reducer_name="identity",
             benchmark_order=76,
         )(MVGNNcross)
+    if "mat" not in available_models():
+        register_model(
+            "mat",
+            required_batch_fields=MAT.required_batch_fields,
+            graph_transform_name="mat_inputs",
+            prediction_reducer_name="identity",
+            benchmark_order=78,
+        )(MAT)
     if "egnn" not in available_models():
         register_model(
             "egnn",
