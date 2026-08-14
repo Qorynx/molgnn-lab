@@ -20,6 +20,7 @@ from .mvgnn_2020 import MVGNNcross
 from .potentialnet_2018 import PotentialNet
 from .resgat_2024 import ResGAT
 from .trimnet_2020 import TrimNet2020
+from .transformer_m_2023 import TransformerM
 from .weave_2016 import Weave
 
 
@@ -141,6 +142,25 @@ def register_builtin_models() -> None:
             benchmark_enabled=False,
             benchmark_order=67,
         )(GPSPlusPlus)
+    if "transformer_m" not in available_models():
+        register_model(
+            "transformer_m",
+            required_batch_fields=TransformerM.required_batch_fields,
+            graph_transform_name="transformer_m_inputs",
+            transform_output_fields=(
+                "transformer_m_x",
+                "transformer_m_in_degree",
+                "transformer_m_out_degree",
+                "transformer_m_pair_index",
+                "transformer_m_spatial_pos",
+                "transformer_m_path_index",
+                "transformer_m_path_step",
+                "transformer_m_path_type",
+            ),
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=68,
+        )(TransformerM)
     if "himnet" not in available_models():
         register_model(
             "himnet",

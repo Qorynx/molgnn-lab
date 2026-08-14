@@ -34,8 +34,8 @@ def add_brics_fragments(data: MolecularData) -> MolecularData:
     """Clone a canonical graph and attach its BRICS fragment view."""
 
     partition = _resolve_brics_partition(data)
-    edge_index = getattr(data, "edge_index")
-    edge_attr = getattr(data, "edge_attr")
+    edge_index = data.edge_index
+    edge_attr = data.edge_attr
     assert isinstance(edge_index, Tensor)
     assert isinstance(edge_attr, Tensor)
 

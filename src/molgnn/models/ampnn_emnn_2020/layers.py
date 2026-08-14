@@ -45,7 +45,7 @@ class SELUFeedForward(nn.Module):
         layer_dims = (input_dim, *normalized_hidden_dims, output_dim)
         layers: list[nn.Module] = []
         for layer_index, (in_features, out_features) in enumerate(
-            zip(layer_dims, layer_dims[1:])
+            zip(layer_dims[:-1], layer_dims[1:], strict=True)
         ):
             layers.append(nn.AlphaDropout(float(dropout)))
             linear = nn.Linear(in_features, out_features, bias=bias)

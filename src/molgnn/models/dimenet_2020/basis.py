@@ -259,7 +259,7 @@ def _positive_spherical_bessel_roots(
     upper = (count + order / 2 + 2) * math.pi
     roots: list[float] = []
     while len(roots) < count:
-        samples = max(1_024, int(math.ceil(upper * 64)))
+        samples = max(1_024, math.ceil(upper * 64))
         grid = np.linspace(1e-7, upper, samples, dtype=np.float64)
         values = spherical_jn(order, grid)
         sign_changes = np.flatnonzero(values[:-1] * values[1:] < 0)

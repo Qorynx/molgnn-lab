@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from .registration import register_builtin_models as register_builtin_models
     from .resgat_2024 import ResGAT as ResGAT
     from .trimnet_2020 import TrimNet2020 as TrimNet2020
+    from .transformer_m_2023 import TransformerM as TransformerM
     from .weave_2016 import Weave as Weave
 
 _EXPORTS = {
@@ -70,6 +71,7 @@ _EXPORTS = {
     "ResGAT": (".resgat_2024", "ResGAT"),
     "NTNConv": (".hignn_2023", "NTNConv"),
     "TrimNet2020": (".trimnet_2020", "TrimNet2020"),
+    "TransformerM": (".transformer_m_2023", "TransformerM"),
     "Weave": (".weave_2016", "Weave"),
     "register_builtin_models": (".registration", "register_builtin_models"),
 }
@@ -116,6 +118,7 @@ __all__ = (
     "ResGAT",
     "NTNConv",
     "TrimNet2020",
+    "TransformerM",
     "Weave",
     "register_builtin_models",
 )

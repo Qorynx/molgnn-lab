@@ -121,7 +121,9 @@ class Weave(BaseMolecularModel):
         self.predictor_layers = nn.ModuleList(
             [
                 nn.Linear(input_dim, output_dim)
-                for input_dim, output_dim in zip(predictor_dims, predictor_dims[1:])
+                for input_dim, output_dim in zip(
+                    predictor_dims[:-1], predictor_dims[1:], strict=True
+                )
             ]
         )
 
