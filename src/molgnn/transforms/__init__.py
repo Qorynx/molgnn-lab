@@ -11,6 +11,7 @@ from .directed_edges import add_reverse_edge_index
 from .egnn import add_egnn_inputs
 from .fragnet import add_fragnet_inputs
 from .gpspp import add_gpspp_inputs
+from .graphormer import add_graphormer_inputs
 from .himnet import add_himnet_inputs
 from .mpnn import add_mpnn_3d_distance_bins_inputs, add_mpnn_edge_types
 from .potentialnet import add_potentialnet_inputs
@@ -50,6 +51,8 @@ def register_builtin_transforms() -> None:
         register_graph_transform("dimenet_inputs", add_dimenet_inputs)
     if "gpspp_inputs" not in _TRANSFORMS:
         register_graph_transform("gpspp_inputs", add_gpspp_inputs)
+    if "graphormer_inputs" not in _TRANSFORMS:
+        register_graph_transform("graphormer_inputs", add_graphormer_inputs)
     if "brics_fragments" not in _TRANSFORMS:
         register_graph_transform("brics_fragments", add_brics_fragments)
     if "himnet_inputs" not in _TRANSFORMS:
@@ -97,6 +100,7 @@ __all__ = [
     "add_egnn_inputs",
     "add_fragnet_inputs",
     "add_gpspp_inputs",
+    "add_graphormer_inputs",
     "add_himnet_inputs",
     "add_mpnn_3d_distance_bins_inputs",
     "add_mpnn_edge_types",
