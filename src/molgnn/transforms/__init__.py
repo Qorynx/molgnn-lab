@@ -12,6 +12,7 @@ from .egnn import add_egnn_inputs
 from .fragnet import add_fragnet_inputs
 from .gpspp import add_gpspp_inputs
 from .himnet import add_himnet_inputs
+from .mat import add_mat_inputs
 from .mpnn import add_mpnn_3d_distance_bins_inputs, add_mpnn_edge_types
 from .potentialnet import add_potentialnet_inputs
 from .weave import add_weave_inputs
@@ -61,6 +62,8 @@ def register_builtin_transforms() -> None:
         register_graph_transform("weave_inputs", add_weave_inputs)
     if "egnn_inputs" not in _TRANSFORMS:
         register_graph_transform("egnn_inputs", add_egnn_inputs)
+    if "mat_inputs" not in _TRANSFORMS:
+        register_graph_transform("mat_inputs", add_mat_inputs)
 
 
 def get_graph_transform(name: str | None) -> GraphTransform | None:
@@ -92,6 +95,7 @@ __all__ = [
     "add_coley_2017_features",
     "add_dimenet_inputs",
     "add_egnn_inputs",
+    "add_mat_inputs",
     "add_fragnet_inputs",
     "add_gpspp_inputs",
     "add_himnet_inputs",

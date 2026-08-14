@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from .himnet_2026 import HimNet as HimNet
     from .himnet_2026 import HimNetData as HimNetData
     from .hignn_2023 import NTNConv as NTNConv
+    from .mat_2020 import MAT as MAT
     from .molecular_graph_embedding_2017 import ColeyGraphConv as ColeyGraphConv
     from .molecular_graph_embedding_2017 import (
         MolecularGraphEmbedding as MolecularGraphEmbedding,
@@ -65,6 +66,7 @@ _EXPORTS = {
     ),
     "MPNN": (".mpnn_2017", "MPNN"),
     "MPNNDistanceBins3D": (".mpnn_2017", "MPNNDistanceBins3D"),
+    "MAT": (".mat_2020", "MAT"),
     "MVGNNcross": (".mvgnn_2020", "MVGNNcross"),
     "PotentialNet": (".potentialnet_2018", "PotentialNet"),
     "ResGAT": (".resgat_2024", "ResGAT"),
@@ -108,6 +110,7 @@ __all__ = (
     "HiGNNData",
     "HimNet",
     "HimNetData",
+    "MAT",
     "MolecularGraphEmbedding",
     "MPNN",
     "MPNNDistanceBins3D",
