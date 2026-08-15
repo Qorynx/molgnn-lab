@@ -125,9 +125,12 @@ the smoke — if the registry entry is wrong, the smoke fails on it.
 
 ## Things NOT to do
 
-- Do **not** commit or push on the human's behalf — the porting
-  workflow explicitly forbids it. Stage and commit only when the
-  human runs the `git commit` / `git push` themselves.
+- Agents MAY stage, commit, and push on the human's behalf when the
+  human explicitly delegates those operations in the same turn (for
+  example: *"commit and push the changes"*, *"make a clean commit
+  for everything staged"*). The human can still choose to run those
+  commands manually whenever preferred; this rule no longer imposes a
+  blanket prohibition.
 - Do **not** touch `tmp/`, `paper_pdf/`, `data_test/`, or `runs/`. They
   are gitignored and used as scratch / dataset / output space; writes
   there vanish on the next clone.
