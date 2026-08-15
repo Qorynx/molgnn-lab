@@ -16,6 +16,8 @@ from .grover_2021 import GROVER
 from .gcn_baseline import GCNBaseline
 from .hignn_2023 import HiGNN
 from .himnet_2026 import HimNet
+from .mat_2020 import MAT
+from .molclr_2022.model import MolCLRGCN, MolCLRGIN
 from .molecular_graph_embedding_2017 import MolecularGraphEmbedding
 from .mpnn_2017 import MPNN, MPNNDistanceBins3D
 from .mvgnn_2020 import MVGNNcross
@@ -260,6 +262,14 @@ def register_builtin_models() -> None:
             prediction_reducer_name="identity",
             benchmark_order=76,
         )(MVGNNcross)
+    if "mat" not in available_models():
+        register_model(
+            "mat",
+            required_batch_fields=MAT.required_batch_fields,
+            graph_transform_name="mat_inputs",
+            prediction_reducer_name="identity",
+            benchmark_order=78,
+        )(MAT)
     if "egnn" not in available_models():
         register_model(
             "egnn",
@@ -269,6 +279,34 @@ def register_builtin_models() -> None:
             prediction_reducer_name="identity",
             benchmark_order=77,
         )(EGNN)
+    if "molclr_gin" not in available_models():
+        register_model(
+            "molclr_gin",
+            default_parameters=dict(
+                emb_dim=300, feat_dim=256, num_layer=5, drop_ratio=0.0, pool="mean"
+            ),
+            required_batch_fields=MolCLRGIN.required_batch_fields,
+            optional_batch_fields=(),
+            graph_transform_name=None,
+            transform_output_fields=(),
+            prediction_reducer_name="identity",
+            benchmark_enabled=True,
+            benchmark_order=79,
+        )(MolCLRGIN)
+    if "molclr_gcn" not in available_models():
+        register_model(
+            "molclr_gcn",
+            default_parameters=dict(
+                emb_dim=300, feat_dim=256, num_layer=5, drop_ratio=0.0, pool="mean"
+            ),
+            required_batch_fields=MolCLRGCN.required_batch_fields,
+            optional_batch_fields=(),
+            graph_transform_name=None,
+            transform_output_fields=(),
+            prediction_reducer_name="identity",
+            benchmark_enabled=True,
+            benchmark_order=81,
+        )(MolCLRGCN)
 
 
 __all__ = ["register_builtin_models"]

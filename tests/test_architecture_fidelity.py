@@ -46,6 +46,9 @@ def test_builtin_models_expose_runtime_input_contracts() -> None:
         "trimnet_2020",
         "weave",
         "egnn",
+        "mat",
+        "molclr_gin",
+        "molclr_gcn",
     }
     assert expected <= set(available_models())
     for name in expected:
