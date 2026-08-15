@@ -34,6 +34,10 @@ tests/*
 !tests/test_gpspp_layers.py
 !tests/test_gpspp_transform.py
 !tests/test_gpspp.py
+!tests/test_graphormer.py
+!tests/test_graphormer_transform.py
+!tests/test_grover.py
+!tests/test_grover_transform.py
 uv.lock
 
 # Keep public example and smoke configurations

@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from .dimenet_2020 import DimeNetData as DimeNetData
     from .gpspp_2023 import GPSPlusPlus as GPSPlusPlus
     from .graphormer_2021 import Graphormer as Graphormer
+    from .grover_2021 import GROVER as GROVER
     from .egnn_2021 import EGNN as EGNN
     from .fragnet_2026 import FragNet as FragNet
     from .gcn_baseline import GCNBaseline as GCNBaseline
@@ -52,6 +53,7 @@ _EXPORTS = {
     "DimeNetData": (".dimenet_2020", "DimeNetData"),
     "GPSPlusPlus": (".gpspp_2023", "GPSPlusPlus"),
     "Graphormer": (".graphormer_2021", "Graphormer"),
+    "GROVER": (".grover_2021", "GROVER"),
     "EGNN": (".egnn_2021", "EGNN"),
     "EMNN": (".ampnn_emnn_2020.emnn", "EMNN"),
     "EMNNData": (".ampnn_emnn_2020.data", "EMNNData"),
@@ -109,6 +111,7 @@ __all__ = (
     "GCNBaseline",
     "GPSPlusPlus",
     "Graphormer",
+    "GROVER",
     "HiGNN",
     "HiGNNData",
     "HimNet",

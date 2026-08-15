@@ -11,6 +11,8 @@ from .dmpnn_2024 import DMPNN
 from .egnn_2021 import EGNN
 from .fragnet_2026 import FragNet
 from .gpspp_2023 import GPSPlusPlus
+from .graphormer_2021 import Graphormer
+from .grover_2021 import GROVER
 from .gcn_baseline import GCNBaseline
 from .hignn_2023 import HiGNN
 from .himnet_2026 import HimNet
@@ -161,6 +163,39 @@ def register_builtin_models() -> None:
             benchmark_enabled=False,
             benchmark_order=68,
         )(TransformerM)
+    if "graphormer" not in available_models():
+        register_model(
+            "graphormer",
+            required_batch_fields=Graphormer.required_batch_fields,
+            graph_transform_name="graphormer_inputs",
+            transform_output_fields=(
+                "graphormer_x",
+                "graphormer_in_degree",
+                "graphormer_out_degree",
+                "graphormer_pair_index",
+                "graphormer_spatial_pos",
+                "graphormer_path_index",
+                "graphormer_path_step",
+                "graphormer_path_edge_type",
+            ),
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=69,
+        )(Graphormer)
+    if "grover" not in available_models():
+        register_model(
+            "grover",
+            required_batch_fields=GROVER.required_batch_fields,
+            graph_transform_name="grover_inputs",
+            transform_output_fields=(
+                "grover_f_atoms",
+                "grover_f_bonds",
+                "grover_reverse_bond",
+            ),
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=69,
+        )(GROVER)
     if "himnet" not in available_models():
         register_model(
             "himnet",
