@@ -17,6 +17,7 @@ from .himnet import add_himnet_inputs
 from .mat import add_mat_inputs
 from .mpnn import add_mpnn_3d_distance_bins_inputs, add_mpnn_edge_types
 from .potentialnet import add_potentialnet_inputs
+from .schnet import add_schnet_inputs
 from .transformer_m import add_transformer_m_inputs
 from .weave import add_weave_inputs
 
@@ -51,6 +52,8 @@ def register_builtin_transforms() -> None:
         )
     if "dimenet_inputs" not in _TRANSFORMS:
         register_graph_transform("dimenet_inputs", add_dimenet_inputs)
+    if "schnet_inputs" not in _TRANSFORMS:
+        register_graph_transform("schnet_inputs", add_schnet_inputs)
     if "gpspp_inputs" not in _TRANSFORMS:
         register_graph_transform("gpspp_inputs", add_gpspp_inputs)
     if "graphormer_inputs" not in _TRANSFORMS:
@@ -113,6 +116,7 @@ __all__ = [
     "add_mpnn_3d_distance_bins_inputs",
     "add_mpnn_edge_types",
     "add_potentialnet_inputs",
+    "add_schnet_inputs",
     "add_transformer_m_inputs",
     "add_reverse_edge_index",
     "add_weave_inputs",

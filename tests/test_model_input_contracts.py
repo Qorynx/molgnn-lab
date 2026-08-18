@@ -20,6 +20,7 @@ from molgnn.models.himnet_2026 import HimNet
 from molgnn.models.molecular_graph_embedding_2017 import MolecularGraphEmbedding
 from molgnn.models.mpnn_2017 import MPNN
 from molgnn.models.potentialnet_2018 import PotentialNet
+from molgnn.models.resgat_2024 import ResGAT
 from molgnn.models.trimnet_2020 import TrimNet2020
 from molgnn.models.weave_2016 import Weave
 from molgnn.transforms import (
@@ -142,6 +143,58 @@ def test_shared_contract_can_reject_supplied_self_loops_when_a_model_requires_it
             device=torch.device("cpu"),
             forbid_self_loops=True,
         )
+
+
+def test_resgat_enforces_its_fc_width_contract() -> None:
+    with pytest.raises(
+        ValueError, match="final embed_sizes entry must be at least 2"
+    ):
+        ResGAT(153, 14, 1, hidden_dim=1, num_blocks=(1,))
+
+
+def test_resgat_applies_relu_after_both_hidden_fc_layers() -> None:
+    model = ResGAT(
+        153,
+        14,
+        1,
+        hidden_dim=4,
+        num_blocks=(1,),
+        embed_sizes=(4,),
+    ).eval()
+    with torch.no_grad():
+        model.task_heads[0].fc2.weight.zero_()
+        model.task_heads[0].fc2.bias.fill_(-1.0)
+
+    head_inputs: list[torch.Tensor] = []
+    handle = model.task_heads[0].out.register_forward_pre_hook(
+        lambda _module, inputs: head_inputs.append(inputs[0].detach().clone())
+    )
+    try:
+        output = model(_canonical_batch("CC", "CC"))
+    finally:
+        handle.remove()
+
+    assert output.shape == (2, 1)
+    assert len(head_inputs) == 1
+    assert torch.equal(head_inputs[0], torch.zeros_like(head_inputs[0]))
+
+
+def test_resgat_uses_independent_single_head_predictors_for_each_task() -> None:
+    model = ResGAT(
+        153,
+        14,
+        2,
+        hidden_dim=4,
+        num_blocks=(1,),
+        embed_sizes=(4,),
+    ).eval()
+
+    assert model.block_sets[0][0].conv1.heads == 1
+    assert model.block_sets[0][0].conv2.heads == 1
+    assert model.task_heads[0].fc1.weight.data_ptr() != (
+        model.task_heads[1].fc1.weight.data_ptr()
+    )
+    assert model(_canonical_batch("CC", "CC")).shape == (2, 2)
 
 
 def test_gcn_keeps_pyg_directed_and_self_loop_support() -> None:

@@ -23,6 +23,7 @@ from .mpnn_2017 import MPNN, MPNNDistanceBins3D
 from .mvgnn_2020 import MVGNNcross
 from .potentialnet_2018 import PotentialNet
 from .resgat_2024 import ResGAT
+from .schnet_2017 import SchNet
 from .trimnet_2020 import TrimNet2020
 from .transformer_m_2023 import TransformerM
 from .weave_2016 import Weave
@@ -75,6 +76,20 @@ def register_builtin_models() -> None:
             benchmark_enabled=False,
             benchmark_order=32,
         )(DimeNet2020)
+    if "schnet" not in available_models():
+        register_model(
+            "schnet",
+            required_batch_fields=SchNet.required_batch_fields,
+            graph_transform_name="schnet_inputs",
+            transform_output_fields=(
+                "atomic_number",
+                "pos",
+                "schnet_edge_index",
+            ),
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=33,
+        )(SchNet)
     if "emnn" not in available_models():
         register_model(
             "emnn",

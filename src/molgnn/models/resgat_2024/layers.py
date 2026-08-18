@@ -101,7 +101,7 @@ class GATEConv(MessagePassing):
 
 
 class ResGATBlock(nn.Module):
-    """Two ``GATConv`` layers with ReLU between, consuming bond features via ``edge_dim``.
+    """Two ``GATConv`` layers with ReLU between, consuming bond features.
 
     Mirrors ``models.basic_block.py::BasicBlock`` from the upstream 2023-ResGAT
     paper. Uses PyG's standard ``GATConv`` (same as upstream).
@@ -112,32 +112,23 @@ class ResGATBlock(nn.Module):
         in_dim: int,
         out_dim: int,
         edge_dim: int,
-        heads: int = 1,
-        dropout: float = 0.0,
     ) -> None:
         super().__init__()
 
         _positive_int(in_dim, "in_dim")
         _positive_int(out_dim, "out_dim")
         _positive_int(edge_dim, "edge_dim")
-        _positive_int(heads, "heads")
-        if not 0 <= dropout < 1:
-            raise ValueError("dropout must be in [0, 1)")
 
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.edge_dim = edge_dim
-        self.heads = heads
-        self.dropout_p = float(dropout)
 
-        self.conv1 = GATConv(in_dim, out_dim, heads=heads, edge_dim=edge_dim)
-        self.conv2 = GATConv(out_dim, out_dim, heads=heads, edge_dim=edge_dim)
+        self.conv1 = GATConv(in_dim, out_dim, edge_dim=edge_dim)
+        self.conv2 = GATConv(out_dim, out_dim, edge_dim=edge_dim)
         self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(float(dropout)) if dropout > 0 else nn.Identity()
 
     def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor) -> Tensor:
         out = self.relu(self.conv1(x, edge_index, edge_attr))
-        out = self.dropout(out)
         out = self.relu(self.conv2(out, edge_index, edge_attr))
         return out
 

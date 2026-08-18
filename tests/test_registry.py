@@ -328,9 +328,9 @@ def test_unknown_model_lists_available_models() -> None:
     with pytest.raises(
         RegistryError,
         match="Available models: ampnn, attentivefp, dimenet, dmpnn, egnn, emnn, fragnet, "
-        "gcn_baseline, gpspp, hignn, himnet, mat, molclr_gcn, molclr_gin, "
-        "molecular_graph_embedding, mpnn, mpnn_3d_distance_bins, mvgnn_cross, "
-        "potentialnet, resgat, transformer_m, trimnet_2020, weave",
+        "gcn_baseline, gpspp, graphormer, grover, hignn, himnet, mat, molclr_gcn, "
+        "molclr_gin, molecular_graph_embedding, mpnn, mpnn_3d_distance_bins, "
+        "mvgnn_cross, potentialnet, resgat, transformer_m, trimnet_2020, weave",
     ):
         build_model("missing", {}, BuildContext(1, 1, 1))
 
