@@ -13,6 +13,7 @@ from torch.optim import Optimizer
 
 from .dataset import DataLoaders
 from .evaluator import EvaluationResult, evaluate
+from .models.base import ModelTrainingOutput
 from .tasks import TaskAdapter, TaskError
 
 
@@ -175,21 +176,37 @@ def train_one_epoch(
         mask = getattr(device_batch, "y_mask", None)
         if not isinstance(targets, Tensor) or not isinstance(mask, Tensor):
             raise TrainerError(f"batch {batch_index} is missing y/y_mask tensors")
-        predictions = model(device_batch)
-        if not isinstance(predictions, Tensor):
+        training_forward = getattr(model, "forward_training", None)
+        output = (
+            training_forward(device_batch)
+            if callable(training_forward)
+            else ModelTrainingOutput(model(device_batch))
+        )
+        if not isinstance(output, ModelTrainingOutput):
             raise TrainerError(
-                f"model output at epoch {epoch}, batch {batch_index} must be a Tensor"
+                f"model training output at epoch {epoch}, batch {batch_index} "
+                "must be a ModelTrainingOutput"
+            )
+        predictions = (output.prediction, *output.auxiliary_predictions)
+        if any(not isinstance(prediction, Tensor) for prediction in predictions):
+            raise TrainerError(
+                f"model predictions at epoch {epoch}, batch {batch_index} must be tensors"
             )
         try:
-            loss = task_adapter.loss(predictions, targets, mask)
+            losses = [
+                task_adapter.loss(prediction, targets, mask)
+                for prediction in predictions
+            ]
         except TaskError as exc:
             raise TrainerError(
                 f"invalid task batch at epoch {epoch}, batch {batch_index}: {exc}"
             ) from exc
         target_count = int(mask.sum().item())
-        if loss is None:
+        available_losses = [loss for loss in losses if loss is not None]
+        if not available_losses:
             skipped_empty_target_batches += 1
             continue
+        loss = torch.stack(available_losses).mean()
         if not torch.isfinite(loss).item():
             raise TrainerError(f"non-finite loss at epoch {epoch}, batch {batch_index}")
         loss.backward()

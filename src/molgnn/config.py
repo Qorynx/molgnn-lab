@@ -35,7 +35,7 @@ class DataConfig:
     split_ratios: tuple[float, float, float]
     split_column: str | None
     invalid_smiles: Literal["error", "skip"]
-    source: Literal["csv_smiles", "pdbbind_complex"] = "csv_smiles"
+    source: Literal["csv_smiles", "pdbbind_complex", "qm9"] = "csv_smiles"
     split_seed_mode: Literal["first_experiment_seed", "per_experiment_seed"] = (
         "first_experiment_seed"
     )
@@ -76,7 +76,7 @@ class TrainingConfig:
 @dataclass(frozen=True)
 class TaskConfig:
     type: Literal["regression", "binary_classification"]
-    loss: Literal["mse", "bce_with_logits"]
+    loss: Literal["mse", "mae", "bce_with_logits"]
     metrics: tuple[str, ...]
     target_scaling: bool
 
@@ -609,8 +609,8 @@ def load_config(path: Path) -> ResolvedConfig:
 
     target_columns = _strings(data_raw["target_columns"], field="data.target_columns")
     source = _string(data_raw["source"], field="data.source")
-    if source not in {"csv_smiles", "pdbbind_complex"}:
-        raise ConfigError("'data.source' must be csv_smiles or pdbbind_complex")
+    if source not in {"csv_smiles", "pdbbind_complex", "qm9"}:
+        raise ConfigError("'data.source' must be csv_smiles, pdbbind_complex, or qm9")
     split = _string(data_raw["split"], field="data.split")
     if split not in {"random", "scaffold", "predefined"}:
         raise ConfigError("'data.split' must be random, scaffold, or predefined")
@@ -664,7 +664,7 @@ def load_config(path: Path) -> ResolvedConfig:
         split_ratios=_ratios(data_raw["split_ratios"]),
         split_column=split_column,
         invalid_smiles=cast(Literal["error", "skip"], invalid_smiles),
-        source=cast(Literal["csv_smiles", "pdbbind_complex"], source),
+        source=cast(Literal["csv_smiles", "pdbbind_complex", "qm9"], source),
         ligand_path_column=ligand_path_column,
         protein_path_column=protein_path_column,
         strip_hydrogens=strip_hydrogens,
@@ -680,9 +680,10 @@ def load_config(path: Path) -> ResolvedConfig:
         raise ConfigError("'task.target_scaling' must be a boolean")
     if task_type not in {"regression", "binary_classification"}:
         raise ConfigError("'task.type' must be regression or binary_classification")
-    expected_loss = "mse" if task_type == "regression" else "bce_with_logits"
-    if loss != expected_loss:
-        raise ConfigError(f"'{task_type}' requires task.loss='{expected_loss}'")
+    if task_type == "regression" and loss not in {"mse", "mae"}:
+        raise ConfigError("'regression' requires task.loss='mse' or 'mae'")
+    if task_type == "binary_classification" and loss != "bce_with_logits":
+        raise ConfigError("'binary_classification' requires task.loss='bce_with_logits'")
     allowed_metrics = (
         _REGRESSION_METRICS if task_type == "regression" else _CLASSIFICATION_METRICS
     )
@@ -696,7 +697,7 @@ def load_config(path: Path) -> ResolvedConfig:
         )
     task = TaskConfig(
         type=cast(Literal["regression", "binary_classification"], task_type),
-        loss=cast(Literal["mse", "bce_with_logits"], loss),
+        loss=cast(Literal["mse", "mae", "bce_with_logits"], loss),
         metrics=metrics,
         target_scaling=target_scaling,
     )

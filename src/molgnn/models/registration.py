@@ -9,13 +9,15 @@ from .attentivefp_2020 import AttentiveFP
 from .dimenet_2020 import DimeNet2020
 from .dmpnn_2024 import DMPNN
 from .egnn_2021 import EGNN
+from .eqgat_2022 import EQGAT
 from .fragnet_2026 import FragNet
+from .gcn_baseline import GCNBaseline
 from .gpspp_2023 import GPSPlusPlus
 from .graphormer_2021 import Graphormer
 from .grover_2021 import GROVER
-from .gcn_baseline import GCNBaseline
 from .hignn_2023 import HiGNN
 from .himnet_2026 import HimNet
+from .hmgnn_2020 import HMGNN
 from .mat_2020 import MAT
 from .molclr_2022.model import MolCLRGCN, MolCLRGIN
 from .molecular_graph_embedding_2017 import MolecularGraphEmbedding
@@ -24,8 +26,8 @@ from .mvgnn_2020 import MVGNNcross
 from .potentialnet_2018 import PotentialNet
 from .resgat_2024 import ResGAT
 from .schnet_2017 import SchNet
-from .trimnet_2020 import TrimNet2020
 from .transformer_m_2023 import TransformerM
+from .trimnet_2020 import TrimNet2020
 from .weave_2016 import Weave
 
 
@@ -90,6 +92,36 @@ def register_builtin_models() -> None:
             benchmark_enabled=False,
             benchmark_order=33,
         )(SchNet)
+    if "eqgat" not in available_models():
+        register_model(
+            "eqgat",
+            required_batch_fields=EQGAT.required_batch_fields,
+            graph_transform_name="eqgat_inputs",
+            transform_output_fields=(
+                "atomic_number",
+                "pos",
+                "eqgat_edge_index",
+            ),
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=34,
+        )(EQGAT)
+    if "hmgnn" not in available_models():
+        register_model(
+            "hmgnn",
+            required_batch_fields=HMGNN.required_batch_fields,
+            graph_transform_name="hmgnn_inputs",
+            transform_output_fields=(
+                "atomic_number",
+                "pos",
+                "hmgnn_atom_edge_index",
+                "hmgnn_body_atom_index",
+                "hmgnn_body_edge_index",
+            ),
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=35,
+        )(HMGNN)
     if "emnn" not in available_models():
         register_model(
             "emnn",

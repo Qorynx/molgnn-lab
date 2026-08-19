@@ -168,6 +168,8 @@ def register_builtin_dataset_sources() -> None:
         _SOURCES["csv_smiles"] = _load_csv_smiles
     if "pdbbind_complex" not in _SOURCES:
         _SOURCES["pdbbind_complex"] = _load_pdbbind_complex
+    if "qm9" not in _SOURCES:
+        _SOURCES["qm9"] = _load_qm9
 
 
 def available_dataset_sources() -> tuple[str, ...]:
@@ -306,6 +308,45 @@ def _load_pdbbind_complex(
             "ligand_path_column": ligand_path_column,
             "protein_path_column": protein_path_column,
             "strip_hydrogens": data_config.strip_hydrogens,
+        },
+    )
+
+
+def _load_qm9(
+    data_config: DataConfig,
+    task_config: TaskConfig,
+    *,
+    featurizer: SampleFeaturizer | None,
+    feature_schema_version: str | None,
+) -> DatasetSourceResult:
+    """Load PyG QM9 while preserving its SDF atom order and coordinates."""
+
+    if featurizer is not None or feature_schema_version is not None:
+        raise DatasetSourceError("qm9 does not support the SMILES-only featurizer hook")
+    if task_config.type != "regression":
+        raise DatasetSourceError("qm9 supports regression tasks only")
+    if data_config.split == "predefined":
+        raise DatasetSourceError("qm9 does not provide predefined split labels")
+    from .datasets.qm9 import QM9_TARGETS, QM9MolecularDataset
+
+    dataset = QM9MolecularDataset(
+        data_config.path, target_columns=data_config.target_columns
+    )
+    return DatasetSourceResult(
+        dataset=dataset,
+        feature_schema=dataset.feature_schema,
+        summary=DatasetLoadSummary(
+            source_rows=len(dataset),
+            valid_rows=len(dataset),
+            skipped_rows=0,
+            num_targets=len(dataset.target_names),
+            feature_schema_version=dataset.feature_schema.version,
+        ),
+        fingerprint=dataset.fingerprint(),
+        metadata={
+            "structure_format": "pyg_qm9_sdf",
+            "native_coordinates": True,
+            "available_targets": QM9_TARGETS,
         },
     )
 

@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 from torch import Tensor, nn
 from torch_geometric.data import Batch
+
+
+@dataclass(frozen=True)
+class ModelTrainingOutput:
+    """Primary prediction plus optional architecture-owned auxiliary heads."""
+
+    prediction: Tensor
+    auxiliary_predictions: tuple[Tensor, ...] = ()
 
 
 class BaseMolecularModel(nn.Module, ABC):
@@ -20,5 +29,10 @@ class BaseMolecularModel(nn.Module, ABC):
     def forward(self, batch: Batch) -> Tensor:
         """Return one ``[batch_size, num_targets]`` tensor per graph."""
 
+    def forward_training(self, batch: Batch) -> ModelTrainingOutput:
+        """Return the standard prediction when no auxiliary objective exists."""
 
-__all__ = ["BaseMolecularModel"]
+        return ModelTrainingOutput(self(batch))
+
+
+__all__ = ["BaseMolecularModel", "ModelTrainingOutput"]

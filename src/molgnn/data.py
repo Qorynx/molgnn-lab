@@ -37,6 +37,12 @@ class MolecularData(Data):
     dimenet_triplet_edge_index: Tensor
     schnet_edge_index: Tensor
     schnet_geometry_is_proxy: Tensor
+    eqgat_edge_index: Tensor
+    eqgat_geometry_is_proxy: Tensor
+    hmgnn_atom_edge_index: Tensor
+    hmgnn_body_atom_index: Tensor
+    hmgnn_body_edge_index: Tensor
+    hmgnn_geometry_is_proxy: Tensor
     gpspp_pair_index: Tensor
     gpspp_spd: Tensor
     weave_pair_index: Tensor
@@ -73,6 +79,14 @@ class MolecularData(Data):
                     "dimenet_triplet_edge_index"
                 )
             return dimenet_edge_index.shape[1]
+        if key == "hmgnn_body_edge_index":
+            body_atom_index = getattr(self, "hmgnn_body_atom_index", None)
+            if not isinstance(body_atom_index, Tensor):
+                raise ValueError(
+                    "MolecularData requires hmgnn_body_atom_index to batch "
+                    "hmgnn_body_edge_index"
+                )
+            return body_atom_index.shape[1]
         if key == "atom_to_fragment":
             return int(value.max().item()) + 1 if isinstance(value, Tensor) and value.numel() else 0
         if key == "frag_index":

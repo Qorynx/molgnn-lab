@@ -352,14 +352,15 @@ def _complex_data(
     if not protein_indices:
         raise PDBBindDatasetError("protein/pocket has no retained atoms")
 
-    ligand_x, ligand_pos = _node_tensors(ligand, ligand_indices)
-    protein_x, protein_pos = _node_tensors(protein, protein_indices)
+    ligand_x, ligand_pos, ligand_atomic_number = _node_tensors(ligand, ligand_indices)
+    protein_x, protein_pos, protein_atomic_number = _node_tensors(protein, protein_indices)
     ligand_edge_index, ligand_edge_attr = _bond_tensors(ligand, ligand_indices, 0)
     protein_edge_index, protein_edge_attr = _bond_tensors(
         protein, protein_indices, len(ligand_indices)
     )
     x = torch.cat((ligand_x, protein_x), dim=0)
     pos = torch.cat((ligand_pos, protein_pos), dim=0)
+    atomic_number = torch.cat((ligand_atomic_number, protein_atomic_number), dim=0)
     edge_index = torch.cat((ligand_edge_index, protein_edge_index), dim=1)
     edge_attr = torch.cat((ligand_edge_attr, protein_edge_attr), dim=0)
     ligand_mask = torch.zeros(x.shape[0], dtype=torch.bool)
@@ -375,6 +376,7 @@ def _complex_data(
         y_mask=y_mask,
         sample_id=torch.tensor([sample_id], dtype=torch.long),
         pos=pos,
+        atomic_number=atomic_number,
         ligand_mask=ligand_mask,
     )
     data.smiles = smiles
@@ -390,18 +392,26 @@ def _atom_indices(molecule: Chem.Mol, strip_hydrogens: bool) -> tuple[int, ...]:
     )
 
 
-def _node_tensors(molecule: Chem.Mol, indices: Sequence[int]) -> tuple[Tensor, Tensor]:
+def _node_tensors(
+    molecule: Chem.Mol, indices: Sequence[int]
+) -> tuple[Tensor, Tensor, Tensor]:
     if not molecule.GetNumConformers():
         raise PDBBindDatasetError("structure has no 3D conformer")
     conformer = molecule.GetConformer()
     features: list[Tensor] = []
     positions: list[tuple[float, float, float]] = []
+    atomic_numbers: list[int] = []
     for index in indices:
         atom = molecule.GetAtomWithIdx(index)
         features.append(_atom_features(atom))
+        atomic_numbers.append(atom.GetAtomicNum())
         point = conformer.GetAtomPosition(index)
         positions.append((float(point.x), float(point.y), float(point.z)))
-    return torch.stack(features), torch.tensor(positions, dtype=torch.float32)
+    return (
+        torch.stack(features),
+        torch.tensor(positions, dtype=torch.float32),
+        torch.tensor(atomic_numbers, dtype=torch.long),
+    )
 
 
 def _bond_tensors(

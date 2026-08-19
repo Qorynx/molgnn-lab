@@ -29,9 +29,14 @@ class TaskAdapter(Protocol):
 
 @dataclass(frozen=True)
 class RegressionTaskAdapter:
-    """Masked MSE adapter with optional target standardization."""
+    """Masked MSE/MAE adapter with optional target standardization."""
 
     scaler: TargetScalerState | None = None
+    loss_name: str = "mse"
+
+    def __post_init__(self) -> None:
+        if self.loss_name not in {"mse", "mae"}:
+            raise TaskError("regression loss_name must be 'mse' or 'mae'")
 
     def loss(
         self,
@@ -47,7 +52,8 @@ class RegressionTaskAdapter:
             if self.scaler is not None
             else targets
         )
-        return (predictions[valid_mask] - scaled_targets[valid_mask]).square().mean()
+        error = predictions[valid_mask] - scaled_targets[valid_mask]
+        return error.abs().mean() if self.loss_name == "mae" else error.square().mean()
 
     def inverse_predictions(self, predictions: Tensor) -> Tensor:
         """Map model outputs back to original units when scaling is enabled."""
@@ -85,11 +91,13 @@ def build_task_adapter(
 ) -> TaskAdapter:
     """Build the task adapter declared by a validated :class:`TaskConfig`."""
     if config.type == "regression":
-        if config.loss != "mse":
-            raise TaskError("regression task requires loss='mse'")
+        if config.loss not in {"mse", "mae"}:
+            raise TaskError("regression task requires loss='mse' or loss='mae'")
         if config.target_scaling and scaler is None:
             raise TaskError("regression target scaling requires a TargetScalerState")
-        return RegressionTaskAdapter(scaler if config.target_scaling else None)
+        return RegressionTaskAdapter(
+            scaler if config.target_scaling else None, loss_name=config.loss
+        )
     if config.type == "binary_classification":
         if config.loss != "bce_with_logits":
             raise TaskError("binary_classification requires loss='bce_with_logits'")
