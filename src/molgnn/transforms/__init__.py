@@ -22,6 +22,7 @@ from .mpnn import add_mpnn_3d_distance_bins_inputs, add_mpnn_edge_types
 from .potentialnet import add_potentialnet_inputs
 from .painn import add_painn_inputs
 from .schnet import add_schnet_inputs
+from .visnet import add_visnet_inputs
 from .transformer_m import add_transformer_m_inputs
 from .weave import add_weave_inputs
 
@@ -60,6 +61,8 @@ def register_builtin_transforms() -> None:
         register_graph_transform("schnet_inputs", add_schnet_inputs)
     if "painn_inputs" not in _TRANSFORMS:
         register_graph_transform("painn_inputs", add_painn_inputs)
+    if "visnet_inputs" not in _TRANSFORMS:
+        register_graph_transform("visnet_inputs", add_visnet_inputs)
     if "eqgat_inputs" not in _TRANSFORMS:
         register_graph_transform("eqgat_inputs", add_eqgat_inputs)
     if "equiformer_inputs" not in _TRANSFORMS:
@@ -134,6 +137,7 @@ __all__ = [
     "add_painn_inputs",
     "add_reverse_edge_index",
     "add_schnet_inputs",
+    "add_visnet_inputs",
     "add_transformer_m_inputs",
     "add_weave_inputs",
     "get_graph_transform",

@@ -11,6 +11,7 @@ from .dmpnn_2024 import DMPNN
 from .egnn_2021 import EGNN
 from .eqgat_2022 import EQGAT
 from .equiformer_2023 import Equiformer
+from .ewaldmp_2023 import EwaldMP
 from .fragnet_2026 import FragNet
 from .gcn_baseline import GCNBaseline
 from .gpspp_2023 import GPSPlusPlus
@@ -30,6 +31,7 @@ from .resgat_2024 import ResGAT
 from .schnet_2017 import SchNet
 from .transformer_m_2023 import TransformerM
 from .trimnet_2020 import TrimNet2020
+from .visnet_2023 import ViSNet
 from .weave_2016 import Weave
 
 
@@ -152,6 +154,34 @@ def register_builtin_models() -> None:
             benchmark_enabled=False,
             benchmark_order=37,
         )(PaiNN)
+    if "visnet" not in available_models():
+        register_model(
+            "visnet",
+            required_batch_fields=ViSNet.required_batch_fields,
+            graph_transform_name="visnet_inputs",
+            transform_output_fields=(
+                "atomic_number",
+                "pos",
+                "visnet_edge_index",
+            ),
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=38,
+        )(ViSNet)
+    if "ewaldmp" not in available_models():
+        register_model(
+            "ewaldmp",
+            required_batch_fields=EwaldMP.required_batch_fields,
+            graph_transform_name="painn_inputs",
+            transform_output_fields=(
+                "atomic_number",
+                "pos",
+                "painn_edge_index",
+            ),
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=39,
+        )(EwaldMP)
     if "emnn" not in available_models():
         register_model(
             "emnn",
