@@ -25,6 +25,7 @@ from .molecular_graph_embedding_2017 import MolecularGraphEmbedding
 from .mpnn_2017 import MPNN, MPNNDistanceBins3D
 from .mvgnn_2020 import MVGNNcross
 from .potentialnet_2018 import PotentialNet
+from .painn_2021 import PaiNN
 from .resgat_2024 import ResGAT
 from .schnet_2017 import SchNet
 from .transformer_m_2023 import TransformerM
@@ -137,6 +138,20 @@ def register_builtin_models() -> None:
             benchmark_enabled=False,
             benchmark_order=36,
         )(Equiformer)
+    if "painn" not in available_models():
+        register_model(
+            "painn",
+            required_batch_fields=PaiNN.required_batch_fields,
+            graph_transform_name="painn_inputs",
+            transform_output_fields=(
+                "atomic_number",
+                "pos",
+                "painn_edge_index",
+            ),
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=37,
+        )(PaiNN)
     if "emnn" not in available_models():
         register_model(
             "emnn",

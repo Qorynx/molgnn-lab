@@ -37,6 +37,8 @@ class MolecularData(Data):
     dimenet_triplet_edge_index: Tensor
     schnet_edge_index: Tensor
     schnet_geometry_is_proxy: Tensor
+    painn_edge_index: Tensor
+    painn_geometry_is_proxy: Tensor
     eqgat_edge_index: Tensor
     eqgat_geometry_is_proxy: Tensor
     equiformer_edge_index: Tensor
