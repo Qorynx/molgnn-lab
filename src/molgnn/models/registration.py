@@ -14,6 +14,7 @@ from .equiformer_2023 import Equiformer
 from .ewaldmp_2023 import EwaldMP
 from .fragnet_2026 import FragNet
 from .gcn_baseline import GCNBaseline
+from .gemnet_2021 import GemNetQ, GemNetT
 from .gpspp_2023 import GPSPlusPlus
 from .graphormer_2021 import Graphormer
 from .grover_2021 import GROVER
@@ -25,8 +26,8 @@ from .molclr_2022.model import MolCLRGCN, MolCLRGIN
 from .molecular_graph_embedding_2017 import MolecularGraphEmbedding
 from .mpnn_2017 import MPNN, MPNNDistanceBins3D
 from .mvgnn_2020 import MVGNNcross
-from .potentialnet_2018 import PotentialNet
 from .painn_2021 import PaiNN
+from .potentialnet_2018 import PotentialNet
 from .resgat_2024 import ResGAT
 from .schnet_2017 import SchNet
 from .transformer_m_2023 import TransformerM
@@ -82,6 +83,41 @@ def register_builtin_models() -> None:
             benchmark_enabled=False,
             benchmark_order=32,
         )(DimeNet2020)
+    if "gemnet_t" not in available_models():
+        register_model(
+            "gemnet_t",
+            required_batch_fields=GemNetT.required_batch_fields,
+            graph_transform_name="gemnet_t_inputs",
+            transform_output_fields=(
+                "atomic_number",
+                "pos",
+                "gemnet_edge_index",
+                "gemnet_reverse_edge_index",
+                "gemnet_triplet_edge_index",
+            ),
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=40,
+        )(GemNetT)
+    if "gemnet_q" not in available_models():
+        register_model(
+            "gemnet_q",
+            required_batch_fields=GemNetQ.required_batch_fields,
+            graph_transform_name="gemnet_q_inputs",
+            transform_output_fields=(
+                "atomic_number",
+                "pos",
+                "gemnet_edge_index",
+                "gemnet_reverse_edge_index",
+                "gemnet_triplet_edge_index",
+                "gemnet_interaction_edge_index",
+                "gemnet_quadruplet_edge_index",
+                "gemnet_quadruplet_interaction_index",
+            ),
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=41,
+        )(GemNetQ)
     if "schnet" not in available_models():
         register_model(
             "schnet",

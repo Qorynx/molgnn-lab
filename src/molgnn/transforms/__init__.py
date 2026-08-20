@@ -12,6 +12,7 @@ from .egnn import add_egnn_inputs
 from .eqgat import add_eqgat_inputs
 from .equiformer import add_equiformer_inputs
 from .fragnet import add_fragnet_inputs
+from .gemnet import add_gemnet_q_inputs, add_gemnet_t_inputs
 from .gpspp import add_gpspp_inputs
 from .graphormer import add_graphormer_inputs
 from .grover import add_grover_inputs
@@ -19,11 +20,11 @@ from .himnet import add_himnet_inputs
 from .hmgnn import add_hmgnn_inputs
 from .mat import add_mat_inputs
 from .mpnn import add_mpnn_3d_distance_bins_inputs, add_mpnn_edge_types
-from .potentialnet import add_potentialnet_inputs
 from .painn import add_painn_inputs
+from .potentialnet import add_potentialnet_inputs
 from .schnet import add_schnet_inputs
-from .visnet import add_visnet_inputs
 from .transformer_m import add_transformer_m_inputs
+from .visnet import add_visnet_inputs
 from .weave import add_weave_inputs
 
 _TRANSFORMS: dict[str, GraphTransform] = {}
@@ -57,6 +58,10 @@ def register_builtin_transforms() -> None:
         )
     if "dimenet_inputs" not in _TRANSFORMS:
         register_graph_transform("dimenet_inputs", add_dimenet_inputs)
+    if "gemnet_t_inputs" not in _TRANSFORMS:
+        register_graph_transform("gemnet_t_inputs", add_gemnet_t_inputs)
+    if "gemnet_q_inputs" not in _TRANSFORMS:
+        register_graph_transform("gemnet_q_inputs", add_gemnet_q_inputs)
     if "schnet_inputs" not in _TRANSFORMS:
         register_graph_transform("schnet_inputs", add_schnet_inputs)
     if "painn_inputs" not in _TRANSFORMS:
@@ -125,6 +130,8 @@ __all__ = [
     "add_eqgat_inputs",
     "add_equiformer_inputs",
     "add_fragnet_inputs",
+    "add_gemnet_q_inputs",
+    "add_gemnet_t_inputs",
     "add_gpspp_inputs",
     "add_graphormer_inputs",
     "add_grover_inputs",
@@ -133,12 +140,12 @@ __all__ = [
     "add_mat_inputs",
     "add_mpnn_3d_distance_bins_inputs",
     "add_mpnn_edge_types",
-    "add_potentialnet_inputs",
     "add_painn_inputs",
+    "add_potentialnet_inputs",
     "add_reverse_edge_index",
     "add_schnet_inputs",
-    "add_visnet_inputs",
     "add_transformer_m_inputs",
+    "add_visnet_inputs",
     "add_weave_inputs",
     "get_graph_transform",
     "register_builtin_transforms",

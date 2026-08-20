@@ -39,6 +39,13 @@ class MolecularData(Data):
     schnet_geometry_is_proxy: Tensor
     painn_edge_index: Tensor
     painn_geometry_is_proxy: Tensor
+    gemnet_edge_index: Tensor
+    gemnet_reverse_edge_index: Tensor
+    gemnet_triplet_edge_index: Tensor
+    gemnet_interaction_edge_index: Tensor
+    gemnet_quadruplet_edge_index: Tensor
+    gemnet_quadruplet_interaction_index: Tensor
+    gemnet_geometry_is_proxy: Tensor
     visnet_edge_index: Tensor
     visnet_geometry_is_proxy: Tensor
     eqgat_edge_index: Tensor
@@ -85,6 +92,26 @@ class MolecularData(Data):
                     "dimenet_triplet_edge_index"
                 )
             return dimenet_edge_index.shape[1]
+        if key in {"gemnet_reverse_edge_index", "gemnet_triplet_edge_index"}:
+            gemnet_edge_index = getattr(self, "gemnet_edge_index", None)
+            if not isinstance(gemnet_edge_index, Tensor):
+                raise ValueError(f"MolecularData requires gemnet_edge_index to batch {key}")
+            return gemnet_edge_index.shape[1]
+        if key == "gemnet_quadruplet_edge_index":
+            gemnet_edge_index = getattr(self, "gemnet_edge_index", None)
+            if not isinstance(gemnet_edge_index, Tensor):
+                raise ValueError(
+                    "MolecularData requires gemnet_edge_index to batch gemnet_quadruplet_edge_index"
+                )
+            return gemnet_edge_index.shape[1]
+        if key == "gemnet_quadruplet_interaction_index":
+            interaction_edge_index = getattr(self, "gemnet_interaction_edge_index", None)
+            if not isinstance(interaction_edge_index, Tensor):
+                raise ValueError(
+                    "MolecularData requires gemnet_interaction_edge_index to batch "
+                    "gemnet_quadruplet_interaction_index"
+                )
+            return interaction_edge_index.shape[1]
         if key == "hmgnn_body_edge_index":
             body_atom_index = getattr(self, "hmgnn_body_atom_index", None)
             if not isinstance(body_atom_index, Tensor):
@@ -116,9 +143,18 @@ class MolecularData(Data):
     def __cat_dim__(self, key: str, value: Any, *args: Any, **kwargs: Any) -> Any:
         """Concatenate one-dimensional model metadata along axis zero."""
 
-        if key in {"reverse_edge_index", "atom_to_fragment"}:
+        if key in {
+            "reverse_edge_index",
+            "atom_to_fragment",
+            "gemnet_reverse_edge_index",
+            "gemnet_quadruplet_interaction_index",
+        }:
             return 0
-        if key == "dimenet_triplet_edge_index":
+        if key in {
+            "dimenet_triplet_edge_index",
+            "gemnet_triplet_edge_index",
+            "gemnet_quadruplet_edge_index",
+        }:
             return 1
         return super().__cat_dim__(key, value, *args, **kwargs)
 
