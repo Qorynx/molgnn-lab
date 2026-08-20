@@ -10,38 +10,14 @@ tmp/
 data_test/
 /.opencode/
 tests/
-# Public regression checks that preserve the architecture-fidelity contract.
+# Keep only framework-level contract regressions in version control.
 !tests/
 tests/*
 !tests/test_architecture_fidelity.py
 !tests/test_model_input_contracts.py
+!tests/test_registry.py
 !tests/test_describe_model_cli.py
 !tests/test_cli_hooks.py
-!tests/test_mpnn_3d.py
-!tests/test_potentialnet.py
-!tests/test_registry.py
-!tests/test_fragnet.py
-!tests/test_weave.py
-!tests/test_ampnn_emnn_layers.py
-!tests/test_ampnn_emnn.py
-!tests/test_ampnn_emnn_task_compatibility.py
-!tests/test_dimenet_basis.py
-!tests/test_dimenet_layers.py
-!tests/test_dimenet_transform.py
-!tests/test_dimenet_basis.py
-!tests/test_dimenet_layers.py
-!tests/test_dimenet.py
-!tests/test_equiformer.py
-!tests/test_equiformer_qm9.py
-!tests/test_equiformer_registration.py
-!tests/test_equiformer_transform.py
-!tests/test_gpspp_layers.py
-!tests/test_gpspp_transform.py
-!tests/test_gpspp.py
-!tests/test_graphormer.py
-!tests/test_graphormer_transform.py
-!tests/test_grover.py
-!tests/test_grover_transform.py
 uv.lock
 
 # Keep public example and smoke configurations
