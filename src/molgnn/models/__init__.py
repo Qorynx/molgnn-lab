@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from .graphormer_2021 import Graphormer as Graphormer
     from .grover_2021 import GROVER as GROVER
     from .egnn_2021 import EGNN as EGNN
+    from .equiformer_2023 import Equiformer as Equiformer
     from .fragnet_2026 import FragNet as FragNet
     from .gcn_baseline import GCNBaseline as GCNBaseline
     from .hignn_2023 import FeatureAttention as FeatureAttention
@@ -54,6 +55,7 @@ _EXPORTS = {
     "DMPNNData": (".dmpnn_2024", "DMPNNData"),
     "DimeNet2020": (".dimenet_2020", "DimeNet2020"),
     "DimeNetData": (".dimenet_2020", "DimeNetData"),
+    "Equiformer": (".equiformer_2023", "Equiformer"),
     "GPSPlusPlus": (".gpspp_2023", "GPSPlusPlus"),
     "Graphormer": (".graphormer_2021", "Graphormer"),
     "GROVER": (".grover_2021", "GROVER"),
@@ -109,6 +111,7 @@ __all__ = (
     "DMPNNData",
     "DimeNet2020",
     "DimeNetData",
+    "Equiformer",
     "EGNN",
     "EMNN",
     "EMNNData",

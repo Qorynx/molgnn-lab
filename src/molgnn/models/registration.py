@@ -10,6 +10,7 @@ from .dimenet_2020 import DimeNet2020
 from .dmpnn_2024 import DMPNN
 from .egnn_2021 import EGNN
 from .eqgat_2022 import EQGAT
+from .equiformer_2023 import Equiformer
 from .fragnet_2026 import FragNet
 from .gcn_baseline import GCNBaseline
 from .gpspp_2023 import GPSPlusPlus
@@ -122,6 +123,20 @@ def register_builtin_models() -> None:
             benchmark_enabled=False,
             benchmark_order=35,
         )(HMGNN)
+    if "equiformer" not in available_models():
+        register_model(
+            "equiformer",
+            required_batch_fields=Equiformer.required_batch_fields,
+            graph_transform_name="equiformer_inputs",
+            transform_output_fields=(
+                "atomic_number",
+                "pos",
+                "equiformer_edge_index",
+            ),
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=36,
+        )(Equiformer)
     if "emnn" not in available_models():
         register_model(
             "emnn",

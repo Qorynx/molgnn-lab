@@ -10,6 +10,7 @@ from .dimenet import add_dimenet_inputs
 from .directed_edges import add_reverse_edge_index
 from .egnn import add_egnn_inputs
 from .eqgat import add_eqgat_inputs
+from .equiformer import add_equiformer_inputs
 from .fragnet import add_fragnet_inputs
 from .gpspp import add_gpspp_inputs
 from .graphormer import add_graphormer_inputs
@@ -58,6 +59,8 @@ def register_builtin_transforms() -> None:
         register_graph_transform("schnet_inputs", add_schnet_inputs)
     if "eqgat_inputs" not in _TRANSFORMS:
         register_graph_transform("eqgat_inputs", add_eqgat_inputs)
+    if "equiformer_inputs" not in _TRANSFORMS:
+        register_graph_transform("equiformer_inputs", add_equiformer_inputs)
     if "hmgnn_inputs" not in _TRANSFORMS:
         register_graph_transform("hmgnn_inputs", add_hmgnn_inputs)
     if "gpspp_inputs" not in _TRANSFORMS:
@@ -114,6 +117,7 @@ __all__ = [
     "add_dimenet_inputs",
     "add_egnn_inputs",
     "add_eqgat_inputs",
+    "add_equiformer_inputs",
     "add_fragnet_inputs",
     "add_gpspp_inputs",
     "add_graphormer_inputs",

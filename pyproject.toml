@@ -24,6 +24,10 @@ dependencies = [
 # time.  Keeping SciPy optional preserves the lean import/runtime path for
 # the existing 2D architectures.
 dimenet = ["scipy>=1.14,<2"]
+# Equiformer requires spherical harmonics, irreps, and tensor products.  The
+# narrow 0.5 range is deliberate: its public API was compatibility-tested
+# against this project, whereas e3nn 0.6 is a potentially breaking 0.x minor.
+equiformer = ["e3nn>=0.5.9,<0.6"]
 
 [project.scripts]
 molgnn = "molgnn.cli:main"

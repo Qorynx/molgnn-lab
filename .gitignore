@@ -31,6 +31,10 @@ tests/*
 !tests/test_dimenet_basis.py
 !tests/test_dimenet_layers.py
 !tests/test_dimenet.py
+!tests/test_equiformer.py
+!tests/test_equiformer_qm9.py
+!tests/test_equiformer_registration.py
+!tests/test_equiformer_transform.py
 !tests/test_gpspp_layers.py
 !tests/test_gpspp_transform.py
 !tests/test_gpspp.py

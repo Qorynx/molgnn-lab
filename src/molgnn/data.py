@@ -39,6 +39,8 @@ class MolecularData(Data):
     schnet_geometry_is_proxy: Tensor
     eqgat_edge_index: Tensor
     eqgat_geometry_is_proxy: Tensor
+    equiformer_edge_index: Tensor
+    equiformer_geometry_is_proxy: Tensor
     hmgnn_atom_edge_index: Tensor
     hmgnn_body_atom_index: Tensor
     hmgnn_body_edge_index: Tensor
