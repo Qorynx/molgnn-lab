@@ -67,7 +67,11 @@ def add_fragnet_inputs(data: MolecularData) -> MolecularData:
     pos = getattr(data, "pos", None)
     if not isinstance(x, Tensor) or x.ndim != 2:
         raise TransformError(f"sample {sample} has invalid x")
-    if not isinstance(edge_index, Tensor) or edge_index.ndim != 2 or edge_index.shape[0] != 2:
+    if (
+        not isinstance(edge_index, Tensor)
+        or edge_index.ndim != 2
+        or edge_index.shape[0] != 2
+    ):
         raise TransformError(f"sample {sample} has invalid edge_index")
     if edge_index.dtype != torch.long:
         raise TransformError(f"sample {sample} edge_index must have dtype torch.long")
@@ -90,7 +94,9 @@ def add_fragnet_inputs(data: MolecularData) -> MolecularData:
     if mol is None:
         raise TransformError(f"sample {sample} has invalid source SMILES")
     if mol.GetNumAtoms() != x.shape[0]:
-        raise TransformError(f"sample {sample} source SMILES atom count does not match x")
+        raise TransformError(
+            f"sample {sample} source SMILES atom count does not match x"
+        )
 
     device = x.device
     num_atoms = int(x.shape[0])
@@ -98,12 +104,16 @@ def add_fragnet_inputs(data: MolecularData) -> MolecularData:
     edge_dst = edge_index[1]
 
     # ---- Fragment graph from BRICS connected components. ---------------------
-    cut_bonds = frozenset(frozenset(pair) for pair, _labels in BRICS.FindBRICSBonds(mol))
+    cut_bonds = frozenset(
+        frozenset(pair) for pair, _labels in BRICS.FindBRICSBonds(mol)
+    )
     atom_to_fragment = _connected_components(mol, set(cut_bonds), device=device)
     num_fragments = int(atom_to_fragment.max().item()) + 1 if num_atoms else 0
 
     if num_atoms:
-        x_frags = scatter(x, atom_to_fragment, dim=0, reduce="sum", dim_size=num_fragments)
+        x_frags = scatter(
+            x, atom_to_fragment, dim=0, reduce="sum", dim_size=num_fragments
+        )
     else:
         x_frags = torch.empty((0, x.shape[1]), dtype=torch.float32, device=device)
     frag_batch = torch.zeros(num_fragments, dtype=torch.long, device=device)
@@ -167,7 +177,9 @@ def add_fragnet_inputs(data: MolecularData) -> MolecularData:
 
     num_line_edges = len(lb_src)
     if num_line_edges:
-        edge_index_bonds_graph = torch.tensor([lb_src, lb_dst], dtype=torch.long, device=device)
+        edge_index_bonds_graph = torch.tensor(
+            [lb_src, lb_dst], dtype=torch.long, device=device
+        )
     else:
         edge_index_bonds_graph = torch.empty((2, 0), dtype=torch.long, device=device)
 
@@ -208,12 +220,18 @@ def add_fragnet_inputs(data: MolecularData) -> MolecularData:
                     fb_attr.append(
                         frag_connection_features[ie] + frag_connection_features[je]
                     )
-        edge_index_fbonds = torch.tensor([fb_src, fb_dst], dtype=torch.long, device=device)
-        edge_attr_fbonds = torch.stack(fb_attr, dim=0) if fb_attr else torch.empty(
-            (0, 6), dtype=torch.float32, device=device
+        edge_index_fbonds = torch.tensor(
+            [fb_src, fb_dst], dtype=torch.long, device=device
+        )
+        edge_attr_fbonds = (
+            torch.stack(fb_attr, dim=0)
+            if fb_attr
+            else torch.empty((0, 6), dtype=torch.float32, device=device)
         )
     else:
-        frag_connection_features = torch.empty((0, 6), dtype=torch.float32, device=device)
+        frag_connection_features = torch.empty(
+            (0, 6), dtype=torch.float32, device=device
+        )
         edge_index_fbonds = torch.empty((2, 0), dtype=torch.long, device=device)
         edge_attr_fbonds = torch.empty((0, 6), dtype=torch.float32, device=device)
 
@@ -277,9 +295,9 @@ def _bond_angle_features(
 
     first_vectors = pos[first_atoms[valid]] - pos[center_atoms[valid]]
     second_vectors = pos[second_atoms[valid]] - pos[center_atoms[valid]]
-    denominator = torch.linalg.vector_norm(first_vectors, dim=-1) * torch.linalg.vector_norm(
-        second_vectors, dim=-1
-    )
+    denominator = torch.linalg.vector_norm(
+        first_vectors, dim=-1
+    ) * torch.linalg.vector_norm(second_vectors, dim=-1)
     if bool((denominator == 0).any()):
         raise TransformError(
             f"sample {sample} has coincident atoms in a FragNet bond angle"

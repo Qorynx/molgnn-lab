@@ -7,7 +7,7 @@ from torch import Tensor
 
 from ..data import MolecularData
 from ..models.dimenet_2020.constants import DIMENET_CUTOFF
-from .base import TransformError
+from .base import TransformError, with_shared_geometry
 
 
 def add_dimenet_inputs(data: MolecularData) -> MolecularData:
@@ -36,6 +36,10 @@ def add_dimenet_inputs(data: MolecularData) -> MolecularData:
 
     atomic_number = getattr(data, "atomic_number", None)
     pos = getattr(data, "pos", None)
+    if atomic_number is None and pos is None:
+        data = with_shared_geometry(data)
+        atomic_number = data.atomic_number
+        pos = data.pos
     _validate_inputs(atomic_number, pos, sample=sample)
     assert isinstance(atomic_number, Tensor)
     assert isinstance(pos, Tensor)

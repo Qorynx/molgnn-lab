@@ -1,4 +1,4 @@
-"""Equiformer's radius topology and deterministic SMILES geometry proxy.
+"""Equiformer's coordinate-derived radius topology.
 
 The 2023 Equiformer consumes coordinates through its own radius graph.  This
 module deliberately leaves the framework's canonical 2-D bond graph intact;
@@ -8,12 +8,10 @@ it only adds the model-local data needed by Equiformer.
 from __future__ import annotations
 
 import torch
-from rdkit import Chem
-from rdkit.Chem import AllChem
 from torch import Tensor
 
 from ..data import MolecularData
-from .base import TransformError
+from .base import TransformError, geometry_is_proxy, with_shared_geometry
 
 # These are the main QM9 settings in the author implementation.  They are
 # kept local so this input boundary remains importable before optional e3nn is
@@ -26,11 +24,8 @@ _EQUIFORMER_MAX_ATOMIC_NUMBER = 118
 def add_equiformer_inputs(data: MolecularData) -> MolecularData:
     """Attach Equiformer's directed, reciprocal radius graph to one sample.
 
-    Native ``atomic_number`` plus ``pos`` values are preserved.  If both are
-    absent, the source SMILES is embedded once with a fixed ETKDGv3 seed and
-    the returned coordinates retain the canonical heavy-atom order.  This is
-    explicitly a model-local geometry proxy, never a change to the shared
-    molecular featurizer.
+    Shared ``atomic_number`` plus ``pos`` values are preserved. Geometry
+    generation is deliberately outside this model-specific transform.
 
     ``equiformer_edge_index`` stores topology only.  Distances and spherical
     harmonics must be recomputed from ``pos`` inside the model so coordinate
@@ -46,87 +41,21 @@ def add_equiformer_inputs(data: MolecularData) -> MolecularData:
     atomic_number = getattr(data, "atomic_number", None)
     pos = getattr(data, "pos", None)
     if atomic_number is None and pos is None:
-        atomic_number, pos = _smiles_proxy(data, sample=sample)
-        is_proxy = True
-    else:
-        _validate_native_inputs(data, atomic_number, pos, sample=sample)
-        assert isinstance(atomic_number, Tensor)
-        assert isinstance(pos, Tensor)
-        is_proxy = False
+        data = with_shared_geometry(data)
+        atomic_number = data.atomic_number
+        pos = data.pos
+    _validate_native_inputs(data, atomic_number, pos, sample=sample)
+    assert isinstance(atomic_number, Tensor)
+    assert isinstance(pos, Tensor)
 
     transformed = data.clone()
     transformed.atomic_number = atomic_number
     transformed.pos = pos
     transformed.equiformer_edge_index = _radius_edge_index(pos, sample=sample)
     transformed.equiformer_geometry_is_proxy = torch.tensor(
-        [is_proxy], dtype=torch.bool, device=pos.device
+        [geometry_is_proxy(data)], dtype=torch.bool, device=pos.device
     )
     return transformed
-
-
-def _smiles_proxy(data: MolecularData, *, sample: int | str) -> tuple[Tensor, Tensor]:
-    smiles = getattr(data, "smiles", None)
-    x = getattr(data, "x", None)
-    if not isinstance(smiles, str) or not smiles:
-        raise TransformError(
-            f"sample {sample} requires atomic_number and pos, or source SMILES for a conformer proxy"
-        )
-    if not isinstance(x, Tensor) or x.ndim != 2 or x.shape[0] < 1:
-        raise TransformError(f"sample {sample} has invalid x for an Equiformer conformer proxy")
-
-    mol = Chem.MolFromSmiles(smiles)
-    if mol is None:
-        raise TransformError(f"sample {sample} has invalid source SMILES")
-    if mol.GetNumAtoms() != x.shape[0]:
-        raise TransformError(f"sample {sample} source SMILES atom count does not match x")
-
-    atomic_number = torch.tensor(
-        [atom.GetAtomicNum() for atom in mol.GetAtoms()],
-        dtype=torch.long,
-        device=x.device,
-    )
-    return atomic_number, _embed_heavy_atom_conformer(mol, sample=sample, device=x.device)
-
-
-def _embed_heavy_atom_conformer(
-    mol: Chem.Mol, *, sample: int | str, device: torch.device
-) -> Tensor:
-    """Return a reproducible heavy-atom conformer without renumbering atoms."""
-
-    if mol.GetNumAtoms() == 1:
-        return torch.zeros((1, 3), dtype=torch.float32, device=device)
-
-    molecule_with_hydrogens = Chem.AddHs(mol)
-    parameters = AllChem.ETKDGv3()
-    parameters.randomSeed = 0x5C4E
-    if AllChem.EmbedMolecule(molecule_with_hydrogens, parameters) != 0:
-        raise TransformError(f"sample {sample} could not embed an Equiformer conformer proxy")
-    try:
-        if AllChem.MMFFHasAllMoleculeParams(molecule_with_hydrogens):
-            AllChem.MMFFOptimizeMolecule(molecule_with_hydrogens, maxIters=200)
-        else:
-            AllChem.UFFOptimizeMolecule(molecule_with_hydrogens, maxIters=200)
-    except RuntimeError:
-        # The embedded coordinates still form a valid explicit proxy when a
-        # force field lacks parameters for an unusual atom or charge state.
-        pass
-
-    conformer = molecule_with_hydrogens.GetConformer()
-    pos = torch.tensor(
-        [
-            (
-                float(conformer.GetAtomPosition(index).x),
-                float(conformer.GetAtomPosition(index).y),
-                float(conformer.GetAtomPosition(index).z),
-            )
-            for index in range(mol.GetNumAtoms())
-        ],
-        dtype=torch.float32,
-        device=device,
-    )
-    if not bool(torch.isfinite(pos).all()):
-        raise TransformError(f"sample {sample} conformer proxy contains non-finite coordinates")
-    return pos
 
 
 def _validate_native_inputs(
@@ -151,7 +80,9 @@ def _validate_native_inputs(
             f"sample {sample} atomic_number must be a non-empty long tensor with values in [1, 118]"
         )
     if not isinstance(pos, Tensor):
-        raise TransformError(f"sample {sample} requires pos for native Equiformer geometry")
+        raise TransformError(
+            f"sample {sample} requires pos for native Equiformer geometry"
+        )
     if (
         pos.shape != (atomic_number.shape[0], 3)
         or pos.dtype != torch.float32

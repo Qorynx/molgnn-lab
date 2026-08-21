@@ -20,7 +20,11 @@ def add_mpnn_edge_types(data: MolecularData) -> MolecularData:
 
     edge_index = getattr(data, "edge_index", None)
     edge_attr = getattr(data, "edge_attr", None)
-    if not isinstance(edge_index, Tensor) or edge_index.ndim != 2 or edge_index.shape[0] != 2:
+    if (
+        not isinstance(edge_index, Tensor)
+        or edge_index.ndim != 2
+        or edge_index.shape[0] != 2
+    ):
         raise TransformError(f"sample {_sample_id(data)} has invalid edge_index")
     if not isinstance(edge_attr, Tensor) or edge_attr.ndim != 2:
         raise TransformError(f"sample {_sample_id(data)} has invalid edge_attr")
@@ -52,13 +56,21 @@ def add_mpnn_3d_distance_bins_inputs(data: MolecularData) -> MolecularData:
     edge_attr = getattr(data, "edge_attr", None)
     pos = getattr(data, "pos", None)
     if not isinstance(x, Tensor) or x.ndim != 2 or x.shape[0] < 1:
-        raise TransformError(f"sample {sample} must provide a non-empty node feature matrix")
+        raise TransformError(
+            f"sample {sample} must provide a non-empty node feature matrix"
+        )
     if x.dtype != torch.float32:
         raise TransformError(f"sample {sample} x must have dtype torch.float32")
-    if not isinstance(edge_index, Tensor) or edge_index.ndim != 2 or edge_index.shape[0] != 2:
+    if (
+        not isinstance(edge_index, Tensor)
+        or edge_index.ndim != 2
+        or edge_index.shape[0] != 2
+    ):
         raise TransformError(f"sample {sample} has invalid edge_index")
     if edge_index.dtype != torch.long or edge_index.device != x.device:
-        raise TransformError(f"sample {sample} edge_index must be long on the node device")
+        raise TransformError(
+            f"sample {sample} edge_index must be long on the node device"
+        )
     if not isinstance(edge_attr, Tensor) or edge_attr.ndim != 2:
         raise TransformError(f"sample {sample} has invalid edge_attr")
     if not isinstance(pos, Tensor):
@@ -69,7 +81,9 @@ def add_mpnn_3d_distance_bins_inputs(data: MolecularData) -> MolecularData:
         or pos.device != x.device
         or not torch.isfinite(pos).all()
     ):
-        raise TransformError(f"sample {sample} pos must have shape [N, 3] finite float32")
+        raise TransformError(
+            f"sample {sample} pos must have shape [N, 3] finite float32"
+        )
 
     edge_count = edge_index.shape[1]
     if edge_count and (edge_index.min() < 0 or edge_index.max() >= x.shape[0]):
@@ -117,7 +131,9 @@ def _canonical_bond_types(
     edge_count = edge_index.shape[1]
     expected_shape = (edge_count, CANONICAL_FEATURE_SCHEMA_V1.bond_dim)
     if edge_attr.shape != expected_shape or edge_attr.dtype != torch.float32:
-        raise TransformError(f"sample {sample} must provide canonical float32 edge_attr")
+        raise TransformError(
+            f"sample {sample} must provide canonical float32 edge_attr"
+        )
     if edge_attr.device != edge_index.device:
         raise TransformError(f"sample {sample} edge features must share edge device")
 
@@ -148,7 +164,10 @@ def _mpnn_3d_bond_types(
         return _canonical_bond_types(data, edge_index=edge_index, edge_attr=edge_attr)
 
     sample = _sample_id(data)
-    if edge_attr.shape != (edge_count, MPNN_3D_TYPED_BOND_DIM) or edge_attr.dtype != torch.float32:
+    if (
+        edge_attr.shape != (edge_count, MPNN_3D_TYPED_BOND_DIM)
+        or edge_attr.dtype != torch.float32
+    ):
         raise TransformError(
             f"sample {sample} must provide canonical [E, "
             f"{CANONICAL_FEATURE_SCHEMA_V1.bond_dim}] or typed [E, "
@@ -179,7 +198,9 @@ def _reciprocal_bond_type_matrix(
     if edge_count:
         encoded_pairs = edge_index[0] * num_nodes + edge_index[1]
         if torch.unique(encoded_pairs).numel() != edge_count:
-            raise TransformError(f"sample {sample} edge_index must not contain duplicate edges")
+            raise TransformError(
+                f"sample {sample} edge_index must not contain duplicate edges"
+            )
     bond_type_matrix = torch.full(
         (num_nodes, num_nodes),
         -1,

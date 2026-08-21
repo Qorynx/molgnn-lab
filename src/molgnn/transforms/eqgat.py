@@ -1,24 +1,20 @@
-"""EQGAT's coordinate-derived radius graph and SMILES conformer proxy."""
+"""EQGAT's coordinate-derived radius graph."""
 
 from __future__ import annotations
 
 import torch
-from rdkit import Chem
-from rdkit.Chem import AllChem
 from torch import Tensor
 
 from ..data import MolecularData
 from ..models.eqgat_2022.constants import EQGAT_CUTOFF, EQGAT_MAX_NEIGHBORS
-from .base import TransformError
+from .base import TransformError, geometry_is_proxy, with_shared_geometry
 
 
 def add_eqgat_inputs(data: MolecularData) -> MolecularData:
     """Attach EQGAT's capped directed radius graph to one unbatched sample.
 
-    Native atomic numbers and coordinates are retained unchanged.  A sample
-    with neither field may use a deterministic ETKDG/MMFF heavy-atom conformer
-    derived from its source SMILES; this proxy is model-local and explicitly
-    marked, never introduced by the shared 2-D featurizer.
+    The shared geometry provider supplies coordinates. This transform derives
+    only EQGAT's capped directed radius graph.
     """
 
     sample = _sample_id(data)
@@ -30,89 +26,30 @@ def add_eqgat_inputs(data: MolecularData) -> MolecularData:
     atomic_number = getattr(data, "atomic_number", None)
     pos = getattr(data, "pos", None)
     if atomic_number is None and pos is None:
-        atomic_number, pos = _smiles_proxy(data, sample=sample)
-        is_proxy = True
-    else:
-        _validate_native_inputs(atomic_number, pos, sample=sample)
-        assert isinstance(atomic_number, Tensor)
-        assert isinstance(pos, Tensor)
-        is_proxy = False
+        data = with_shared_geometry(data)
+        atomic_number = data.atomic_number
+        pos = data.pos
+    _validate_native_inputs(atomic_number, pos, sample=sample)
+    assert isinstance(atomic_number, Tensor)
+    assert isinstance(pos, Tensor)
 
     transformed = data.clone()
     transformed.atomic_number = atomic_number
     transformed.pos = pos
     transformed.eqgat_edge_index = _radius_edge_index(pos)
     transformed.eqgat_geometry_is_proxy = torch.tensor(
-        [is_proxy], dtype=torch.bool, device=pos.device
+        [geometry_is_proxy(data)], dtype=torch.bool, device=pos.device
     )
     return transformed
-
-
-def _smiles_proxy(data: MolecularData, *, sample: int | str) -> tuple[Tensor, Tensor]:
-    smiles = getattr(data, "smiles", None)
-    x = getattr(data, "x", None)
-    if not isinstance(smiles, str) or not smiles:
-        raise TransformError(
-            f"sample {sample} requires atomic_number and pos, or source SMILES for a conformer proxy"
-        )
-    if not isinstance(x, Tensor) or x.ndim != 2 or x.shape[0] < 1:
-        raise TransformError(f"sample {sample} has invalid x for an EQGAT conformer proxy")
-
-    mol = Chem.MolFromSmiles(smiles)
-    if mol is None:
-        raise TransformError(f"sample {sample} has invalid source SMILES")
-    if mol.GetNumAtoms() != x.shape[0]:
-        raise TransformError(f"sample {sample} source SMILES atom count does not match x")
-    atomic_number = torch.tensor(
-        [atom.GetAtomicNum() for atom in mol.GetAtoms()],
-        dtype=torch.long,
-        device=x.device,
-    )
-    return atomic_number, _embed_heavy_atom_conformer(mol, sample=sample, device=x.device)
-
-
-def _embed_heavy_atom_conformer(
-    mol: Chem.Mol, *, sample: int | str, device: torch.device
-) -> Tensor:
-    """Construct a deterministic proxy conformer without changing atom IDs."""
-
-    if mol.GetNumAtoms() == 1:
-        return torch.zeros((1, 3), dtype=torch.float32, device=device)
-    mol_h = Chem.AddHs(mol)
-    parameters = AllChem.ETKDGv3()
-    parameters.randomSeed = 0x5C4E
-    if AllChem.EmbedMolecule(mol_h, parameters) != 0:
-        raise TransformError(f"sample {sample} could not embed an EQGAT conformer proxy")
-    try:
-        if AllChem.MMFFHasAllMoleculeParams(mol_h):
-            AllChem.MMFFOptimizeMolecule(mol_h, maxIters=200)
-        else:
-            AllChem.UFFOptimizeMolecule(mol_h, maxIters=200)
-    except RuntimeError:
-        # An embedded geometry is still usable when a force field lacks a
-        # parameter for an unusual atom or charge state.
-        pass
-
-    conformer = mol_h.GetConformer()
-    positions = [
-        (
-            float(conformer.GetAtomPosition(index).x),
-            float(conformer.GetAtomPosition(index).y),
-            float(conformer.GetAtomPosition(index).z),
-        )
-        for index in range(mol.GetNumAtoms())
-    ]
-    pos = torch.tensor(positions, dtype=torch.float32, device=device)
-    if not bool(torch.isfinite(pos).all()):
-        raise TransformError(f"sample {sample} conformer proxy contains non-finite coordinates")
-    return pos
 
 
 def _validate_native_inputs(
     atomic_number: object, pos: object, *, sample: int | str
 ) -> None:
     if not isinstance(atomic_number, Tensor):
-        raise TransformError(f"sample {sample} requires atomic_number for native EQGAT geometry")
+        raise TransformError(
+            f"sample {sample} requires atomic_number for native EQGAT geometry"
+        )
     if (
         atomic_number.ndim != 1
         or atomic_number.numel() < 1

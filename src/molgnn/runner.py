@@ -36,6 +36,7 @@ from .dataset import (
 from .dataset_sources import DatasetSourceError, DatasetSourceResult, load_dataset
 from .evaluator import evaluate
 from .featurizer import FeatureSchema
+from .geometry import GeometryError, prepare_geometry_dataset
 from .hooks import LoadedHook
 from .models.registration import register_builtin_models
 from .registry import (
@@ -48,7 +49,7 @@ from .registry import (
     validate_required_batch_fields,
 )
 from .splits import SplitIndices, make_split, split_rows
-from .tasks import TaskAdapter, TargetScalerState, build_task_adapter, fit_target_scaler
+from .tasks import TargetScalerState, TaskAdapter, build_task_adapter, fit_target_scaler
 from .trainer import EpochRecord, StrategyResult, fit, resolve_device
 from .transforms import GraphTransform, get_graph_transform, register_builtin_transforms
 
@@ -116,7 +117,11 @@ class _ResolvedModelPlan:
     graph_transform: GraphTransform | None
 
 
-def run_benchmark(config: ResolvedConfig) -> BenchmarkResult:
+def run_benchmark(
+    config: ResolvedConfig,
+    *,
+    featurizer: LoadedHook | None = None,
+) -> BenchmarkResult:
     """Run selected models in model-outer, seed-inner order.
 
     Dataset loading happens once. Split/scaler state is reused according to the
@@ -128,7 +133,8 @@ def run_benchmark(config: ResolvedConfig) -> BenchmarkResult:
     register_builtin_transforms()
     specs = resolve_benchmark_models(config.models)
     _validate_selected_overrides(config, specs)
-    shared = _prepare_shared_dataset(config)
+    shared = _prepare_shared_dataset(config, featurizer=featurizer)
+    shared = _prepare_shared_geometry(shared, specs)
     seed_splits = _prepare_seed_splits(config, shared, config.experiment.seeds)
     preflight_split = seed_splits[config.experiment.seeds[0]]
 
@@ -137,7 +143,9 @@ def run_benchmark(config: ResolvedConfig) -> BenchmarkResult:
     for spec in specs:
         try:
             plan = _resolve_model_plan(config, spec, shared.context)
-            _preflight_model(plan, shared, preflight_split, plan.graph_transform)
+            graph_transform = _effective_graph_transform(plan, shared.dataset)
+            plan = replace(plan, graph_transform=graph_transform)
+            _preflight_model(plan, shared, preflight_split, graph_transform)
         except Exception as exc:
             failures.extend(
                 _failures_for_model(
@@ -249,19 +257,16 @@ def _run_legacy_experiments(
         featurizer=featurizer,
         training_strategy=training_strategy,
     )
-    seed_splits = _prepare_seed_splits(config, shared, seeds)
     spec = get_model_spec(config.model.name)
+    shared = _prepare_shared_geometry(shared, (spec,))
+    seed_splits = _prepare_seed_splits(config, shared, seeds)
     plan = _resolve_model_plan(
         config,
         spec,
         shared.context,
         compatibility_parameters=config.model.parameters,
     )
-    graph_transform = (
-        plan.graph_transform
-        if featurizer is None
-        else _effective_graph_transform(plan, shared.dataset)
-    )
+    graph_transform = _effective_graph_transform(plan, shared.dataset)
     _preflight_model(plan, shared, seed_splits[seeds[0]], graph_transform)
     prepared = prepare_model_samples(shared.dataset, graph_transform)
     completed: list[Path] = []
@@ -410,6 +415,28 @@ def _prepare_seed_splits(
     return resolved
 
 
+def _prepare_shared_geometry(
+    shared: _SharedDatasetData,
+    specs: Sequence[ModelSpec],
+) -> _SharedDatasetData:
+    """Materialize one coordinate view shared by every selected 3-D model."""
+
+    if not any(spec.geometry_requirement != "none" for spec in specs):
+        return shared
+    try:
+        geometry = prepare_geometry_dataset(shared.dataset)
+    except GeometryError as exc:
+        names = ", ".join(
+            spec.name for spec in specs if spec.geometry_requirement != "none"
+        )
+        raise RunnerError(
+            f"could not prepare shared geometry for model(s) {names}: {exc}"
+        ) from exc
+    metadata = dict(shared.metadata)
+    metadata.update(geometry.metadata())
+    return replace(shared, dataset=geometry.dataset, metadata=metadata)
+
+
 def _resolve_split_seed(config: ResolvedConfig, run_seed: int) -> int | None:
     """Return the split RNG seed, or ``None`` for a fixed predefined split."""
 
@@ -539,6 +566,9 @@ def _effective_graph_transform(
             for field in plan.spec.required_batch_fields
             if field not in {"x", "edge_index", "edge_attr", "batch"}
         )
+    derived_fields = tuple(
+        field for field in derived_fields if field not in {"atomic_number", "pos"}
+    )
     if not derived_fields:
         return transform
 
@@ -550,13 +580,7 @@ def _effective_graph_transform(
     }
     if all(availability.values()):
         return None
-    if not any(availability.values()):
-        return transform
-    fields = ", ".join(field for field, present in availability.items() if present)
-    raise RunnerError(
-        f"custom featurizer provides only part of model '{plan.spec.name}' derived "
-        f"fields: {fields}; provide all or let the bundled transform derive all"
-    )
+    return transform
 
 
 def _effective_model_config(

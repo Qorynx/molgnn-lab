@@ -197,6 +197,8 @@ def _runtime_model_contract(spec: ModelSpec) -> dict[str, object]:
         "optional_batch_fields": list(spec.optional_batch_fields),
         "graph_transform_name": spec.graph_transform_name,
         "prediction_reducer_name": spec.prediction_reducer_name,
+        "geometry_requirement": spec.geometry_requirement,
+        "geometry_role": spec.geometry_role,
         "benchmark_enabled": spec.benchmark_enabled,
         "benchmark_order": spec.benchmark_order,
     }
@@ -218,6 +220,8 @@ def _format_model_description(description: dict[str, object]) -> str:
         + _format_optional_value(description["graph_transform_name"])
     )
     lines.append(f"Prediction reducer: {description['prediction_reducer_name']}")
+    lines.append(f"Geometry requirement: {description['geometry_requirement']}")
+    lines.append(f"Geometry role: {description['geometry_role']}")
     benchmark_enabled = description["benchmark_enabled"]
     if not isinstance(benchmark_enabled, bool):
         raise TypeError("benchmark_enabled must be a boolean")

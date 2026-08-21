@@ -7,13 +7,17 @@ import inspect
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TypeVar
+from typing import Literal, TypeVar
 
 from torch import Tensor, nn
 
 
 class RegistryError(ValueError):
     """Raised when a model cannot be registered or built."""
+
+
+GeometryRequirement = Literal["none", "optional", "required"]
+GeometryRole = Literal["none", "pure_3d", "hybrid"]
 
 
 @dataclass(frozen=True)
@@ -44,6 +48,8 @@ class ModelSpec:
     graph_transform_name: str | None = None
     transform_output_fields: tuple[str, ...] = ()
     prediction_reducer_name: str = "identity"
+    geometry_requirement: GeometryRequirement = "none"
+    geometry_role: GeometryRole = "none"
     benchmark_enabled: bool = True
     benchmark_order: int = 0
 
@@ -64,6 +70,8 @@ def register_model(
     graph_transform_name: str | None = None,
     transform_output_fields: Sequence[str] = (),
     prediction_reducer_name: str = "identity",
+    geometry_requirement: GeometryRequirement = "none",
+    geometry_role: GeometryRole = "none",
     benchmark_enabled: bool = True,
     benchmark_order: int = 0,
 ) -> Callable[[_T], _T]:
@@ -94,6 +102,18 @@ def register_model(
     if transform_fields and graph_transform_name is None:
         raise RegistryError("transform_output_fields requires a graph_transform_name")
     prediction_reducer_name = _validate_name(prediction_reducer_name)
+    if geometry_requirement not in {"none", "optional", "required"}:
+        raise RegistryError("geometry_requirement must be none, optional, or required")
+    if geometry_role not in {"none", "pure_3d", "hybrid"}:
+        raise RegistryError("geometry_role must be none, pure_3d, or hybrid")
+    if geometry_requirement == "none" and geometry_role != "none":
+        raise RegistryError(
+            "geometry_role must be none when geometry_requirement is none"
+        )
+    if geometry_requirement != "none" and geometry_role == "none":
+        raise RegistryError(
+            "geometry_role must be pure_3d or hybrid when geometry is used"
+        )
     defaults = _validated_parameter_mapping(
         default_parameters or {}, field="default_parameters"
     )
@@ -122,6 +142,8 @@ def register_model(
             graph_transform_name=graph_transform_name,
             transform_output_fields=transform_fields,
             prediction_reducer_name=prediction_reducer_name,
+            geometry_requirement=geometry_requirement,
+            geometry_role=geometry_role,
             benchmark_enabled=benchmark_enabled,
             benchmark_order=benchmark_order,
         )
@@ -312,6 +334,8 @@ def _accepted_factory_parameters(
 
 __all__ = [
     "BuildContext",
+    "GeometryRequirement",
+    "GeometryRole",
     "ModelSpec",
     "RegistryError",
     "available_models",
