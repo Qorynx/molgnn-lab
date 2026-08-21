@@ -18,7 +18,11 @@ tests/*
 !tests/test_registry.py
 !tests/test_describe_model_cli.py
 !tests/test_cli_hooks.py
+!tests/test_geometry_pipeline.py
 uv.lock
+
+# Local-only exhaustive compatibility matrix (never committed).
+/src/molgnn/moleculenet_smoke.py
 
 # Keep public example and smoke configurations
 configs/*
