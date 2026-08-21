@@ -1,0 +1,28 @@
+format_version: 1
+model: molebert
+paper: "Mole-BERT: Rethinking Pre-training Graph Neural Networks for Molecules"
+artifact_role: pretrained_encoder_state_dict
+file: Mole-BERT.pth
+sha256: 375CD40AF9F21D2A92ED1ACBDEA9EFAD14254C36703BB0E3A7E433E09E624CE1
+size_bytes: 7452448
+source_repository: https://github.com/junxia97/Mole-BERT.git
+source_commit: 2feff8a33e3634b66b7408e2e2780fc9d960909f
+source_path: model_gin/Mole-BERT.pth
+architecture:
+  encoder: bond_aware_gin
+  num_layers: 5
+  hidden_dim: 300
+  atom_embedding_rows: 120
+  chirality_embedding_rows: 3
+  bond_type_embedding_rows: 6
+  bond_direction_embedding_rows: 3
+contents:
+  tokenizer: false
+  vector_quantizer: false
+  pretraining_heads: false
+  optimizer: false
+license: UNKNOWN
+repository_decision:
+  action: commit_checkpoint
+  authorized_by: project_owner
+  date: 2026-08-21
