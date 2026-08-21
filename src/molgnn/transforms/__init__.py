@@ -19,6 +19,7 @@ from .grover import add_grover_inputs
 from .himnet import add_himnet_inputs
 from .hmgnn import add_hmgnn_inputs
 from .mat import add_mat_inputs
+from .molebert import add_molebert_inputs
 from .mpnn import add_mpnn_3d_distance_bins_inputs, add_mpnn_edge_types
 from .painn import add_painn_inputs
 from .potentialnet import add_potentialnet_inputs
@@ -96,6 +97,8 @@ def register_builtin_transforms() -> None:
         register_graph_transform("egnn_inputs", add_egnn_inputs)
     if "mat_inputs" not in _TRANSFORMS:
         register_graph_transform("mat_inputs", add_mat_inputs)
+    if "molebert_inputs" not in _TRANSFORMS:
+        register_graph_transform("molebert_inputs", add_molebert_inputs)
 
 
 def get_graph_transform(name: str | None) -> GraphTransform | None:
@@ -138,6 +141,7 @@ __all__ = [
     "add_himnet_inputs",
     "add_hmgnn_inputs",
     "add_mat_inputs",
+    "add_molebert_inputs",
     "add_mpnn_3d_distance_bins_inputs",
     "add_mpnn_edge_types",
     "add_painn_inputs",

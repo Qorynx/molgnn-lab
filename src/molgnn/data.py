@@ -23,6 +23,8 @@ class MolecularData(Data):
     x: Tensor  # pyright: ignore[reportIncompatibleMethodOverride]
     edge_index: Tensor  # pyright: ignore[reportIncompatibleMethodOverride]
     edge_attr: Tensor  # pyright: ignore[reportIncompatibleMethodOverride]
+    molebert_atom_attr: Tensor
+    molebert_bond_attr: Tensor
     y: Tensor  # pyright: ignore[reportIncompatibleMethodOverride]
     y_mask: Tensor
     sample_id: Tensor

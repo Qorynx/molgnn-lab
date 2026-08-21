@@ -76,6 +76,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     describe_parser.set_defaults(handler=_describe_model)
 
+    smoke_parser = subparsers.add_parser(
+        "moleculenet-smoke",
+        help="Run the lightweight compatibility matrix for MoleculeNet schemas.",
+    )
+    smoke_parser.add_argument("--models", nargs="+", required=True)
+    smoke_parser.add_argument("--epochs", type=int, default=1)
+    smoke_parser.add_argument("--device", choices=("cpu", "cuda", "auto"), default="cpu")
+    smoke_parser.add_argument("--output-dir", default="runs/moleculenet_smoke")
+    smoke_parser.set_defaults(handler=_moleculenet_smoke)
+
     return parser
 
 
@@ -187,6 +197,26 @@ def _describe_model(args: argparse.Namespace) -> int:
     else:
         print(_format_model_description(description))
     return 0
+
+
+def _moleculenet_smoke(args: argparse.Namespace) -> int:
+    """Run the small all-schema compatibility matrix."""
+    from .moleculenet_smoke import MoleculeNetSmokeError, run_moleculenet_smoke
+
+    try:
+        result = run_moleculenet_smoke(
+            args.output_dir,
+            epochs=args.epochs,
+            device=args.device,
+            model_names=args.models,
+        )
+    except (MoleculeNetSmokeError, ValueError, RuntimeError, OSError) as exc:
+        print(f"MoleculeNet smoke error: {exc}", file=sys.stderr)
+        return 2
+    print(f"Passed: {result.passed}; failed: {result.failed}")
+    print(f"Report: {result.report_path}")
+    print(f"Summary: {result.summary_path}")
+    return 1 if result.failed else 0
 
 
 def _runtime_model_contract(spec: ModelSpec) -> dict[str, object]:

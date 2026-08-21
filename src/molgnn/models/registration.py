@@ -23,6 +23,7 @@ from .himnet_2026 import HimNet
 from .hmgnn_2020 import HMGNN
 from .mat_2020 import MAT
 from .molclr_2022.model import MolCLRGCN, MolCLRGIN
+from .molebert_2023 import MoleBERT
 from .molecular_graph_embedding_2017 import MolecularGraphEmbedding
 from .mpnn_2017 import MPNN, MPNNDistanceBins3D
 from .mvgnn_2020 import MVGNNcross
@@ -480,6 +481,24 @@ def register_builtin_models() -> None:
             benchmark_enabled=True,
             benchmark_order=81,
         )(MolCLRGCN)
+    if "molebert" not in available_models():
+        register_model(
+            "molebert",
+            default_parameters=dict(
+                hidden_dim=300,
+                num_layers=5,
+                jk="last",
+                dropout=0.0,
+                pooling="mean",
+                pretrained_checkpoint=None,
+            ),
+            required_batch_fields=MoleBERT.required_batch_fields,
+            graph_transform_name="molebert_inputs",
+            transform_output_fields=("molebert_atom_attr", "molebert_bond_attr"),
+            prediction_reducer_name="identity",
+            benchmark_enabled=True,
+            benchmark_order=83,
+        )(MoleBERT)
 
 
 __all__ = ["register_builtin_models"]

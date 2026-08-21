@@ -44,6 +44,8 @@ def test_describe_model_json_exposes_only_the_runtime_contract(capsys) -> None:
     assert payload["optional_batch_fields"] == []
     assert payload["graph_transform_name"] == "directed_edges"
     assert payload["prediction_reducer_name"] == "identity"
+    assert payload["geometry_requirement"] == "none"
+    assert payload["geometry_role"] == "none"
     assert payload["benchmark_enabled"] is True
     assert payload["benchmark_order"] == 30
     assert set(payload) == {
@@ -52,6 +54,8 @@ def test_describe_model_json_exposes_only_the_runtime_contract(capsys) -> None:
         "optional_batch_fields",
         "graph_transform_name",
         "prediction_reducer_name",
+        "geometry_requirement",
+        "geometry_role",
         "benchmark_enabled",
         "benchmark_order",
     }
@@ -118,6 +122,8 @@ def test_describe_model_reports_dimenet_coordinate_contract(capsys) -> None:
     assert payload["optional_batch_fields"] == []
     assert payload["graph_transform_name"] == "dimenet_inputs"
     assert payload["prediction_reducer_name"] == "identity"
+    assert payload["geometry_requirement"] == "required"
+    assert payload["geometry_role"] == "pure_3d"
     assert payload["benchmark_enabled"] is False
     assert payload["benchmark_order"] == 32
 

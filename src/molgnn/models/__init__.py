@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from .mat_2020 import MAT as MAT
     from .molclr_2022.model import MolCLRGCN as MolCLRGCN
     from .molclr_2022.model import MolCLRGIN as MolCLRGIN
+    from .molebert_2023 import MoleBERT as MoleBERT
     from .molecular_graph_embedding_2017 import ColeyGraphConv as ColeyGraphConv
     from .molecular_graph_embedding_2017 import (
         MolecularGraphEmbedding as MolecularGraphEmbedding,
@@ -78,6 +79,7 @@ _EXPORTS = {
     "MAT": (".mat_2020", "MAT"),
     "MolCLRGCN": (".molclr_2022.model", "MolCLRGCN"),
     "MolCLRGIN": (".molclr_2022.model", "MolCLRGIN"),
+    "MoleBERT": (".molebert_2023", "MoleBERT"),
     "MVGNNcross": (".mvgnn_2020", "MVGNNcross"),
     "PotentialNet": (".potentialnet_2018", "PotentialNet"),
     "ResGAT": (".resgat_2024", "ResGAT"),
@@ -128,6 +130,7 @@ __all__ = (
     "MAT",
     "MolCLRGCN",
     "MolCLRGIN",
+    "MoleBERT",
     "MolecularGraphEmbedding",
     "MPNN",
     "MPNNDistanceBins3D",

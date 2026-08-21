@@ -49,6 +49,7 @@ def test_builtin_models_expose_runtime_input_contracts() -> None:
         "mat",
         "molclr_gin",
         "molclr_gcn",
+        "molebert",
     }
     assert expected <= set(available_models())
     for name in expected:
