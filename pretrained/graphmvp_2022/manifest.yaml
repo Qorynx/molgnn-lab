@@ -1,0 +1,46 @@
+format_version: 1
+model: graphmvp
+paper: "Pre-training Molecular Graph Representation with 3D Geometry"
+source_repository: https://github.com/chao1224/GraphMVP.git
+source_commit: 80c42aff21ece462c951cfda110f8eaf866aea0c
+license: MIT
+artifacts:
+  - file: GraphMVP_C.pth
+    artifact_role: pretrained_encoder_state_dict
+    graphmvp_variant: Eq7_core
+    feature_profile: simple
+    source_archive: GraphMVP_simple_features_for_classification.zip
+    source_member: "output/3D_hybrid_02_masking/GEOM_3D_nmol50000_nconf5_nupper1000/CL_1_VAE_1/6_51_10_0.1/0.15_EBM_dot_prod_0.2_normalize_l2_detach_target_2_100_0/pretraining_model.pth"
+    sha256: 8cf4b3ac27997eedee5780450c8a72b2870b4a29c5497ce0fca409675417d689
+    size_bytes: 7462512
+    architecture:
+      encoder: bond_aware_gin
+      num_layers: 5
+      hidden_dim: 300
+      atom_embedding_rows: 120
+      chirality_embedding_rows: 3
+      bond_type_embedding_rows: 6
+      bond_direction_embedding_rows: 3
+    contents:
+      encoder_only: true
+      pretraining_heads: false
+      schnet_state: false
+
+  - file: GraphMVP_G.pth
+    artifact_role: pretrained_encoder_state_dict
+    graphmvp_variant: Eq7_core
+    feature_profile: ogb_full
+    source_archive: GraphMVP_complate_features_for_regression.zip
+    source_member: "GraphMVP_complate_features_for_regression/GraphMVP/pretraining_model.pth"
+    sha256: 628c285047ecab79d43dca7f2e9a530e402451950463830c17c081642c3cd9c3
+    size_bytes: 7609514
+    architecture:
+      encoder: ogb_feature_gin
+      num_layers: 5
+      hidden_dim: 300
+      atom_feature_dimensions: [119, 4, 12, 12, 10, 6, 6, 2, 2]
+      bond_feature_dimensions: [5, 6, 2]
+    contents:
+      encoder_only: true
+      pretraining_heads: false
+      schnet_state: false
