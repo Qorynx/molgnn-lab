@@ -23,8 +23,21 @@ class MolecularData(Data):
     x: Tensor  # pyright: ignore[reportIncompatibleMethodOverride]
     edge_index: Tensor  # pyright: ignore[reportIncompatibleMethodOverride]
     edge_attr: Tensor  # pyright: ignore[reportIncompatibleMethodOverride]
+    chemrl_gem_atom_attr: Tensor
+    chemrl_gem_edge_index: Tensor
+    chemrl_gem_bond_attr: Tensor
+    chemrl_gem_bond_length: Tensor
+    chemrl_gem_angle_edge_index: Tensor
+    chemrl_gem_bond_angle: Tensor
+    chemrl_gem_geometry_is_proxy: Tensor
+    neural_fp_x: Tensor
+    neural_fp_edge_attr: Tensor
     molebert_atom_attr: Tensor
     molebert_bond_attr: Tensor
+    graphmvp_simple_atom_attr: Tensor
+    graphmvp_simple_bond_attr: Tensor
+    graphmvp_ogb_atom_attr: Tensor
+    graphmvp_ogb_bond_attr: Tensor
     y: Tensor  # pyright: ignore[reportIncompatibleMethodOverride]
     y_mask: Tensor
     sample_id: Tensor
@@ -86,6 +99,14 @@ class MolecularData(Data):
 
         if key == "reverse_edge_index":
             return self.edge_index.shape[1]
+        if key == "chemrl_gem_angle_edge_index":
+            gem_edge_index = getattr(self, "chemrl_gem_edge_index", None)
+            if not isinstance(gem_edge_index, Tensor):
+                raise ValueError(
+                    "MolecularData requires chemrl_gem_edge_index to batch "
+                    "chemrl_gem_angle_edge_index"
+                )
+            return gem_edge_index.shape[1]
         if key == "dimenet_triplet_edge_index":
             dimenet_edge_index = getattr(self, "dimenet_edge_index", None)
             if not isinstance(dimenet_edge_index, Tensor):
@@ -156,6 +177,7 @@ class MolecularData(Data):
             "dimenet_triplet_edge_index",
             "gemnet_triplet_edge_index",
             "gemnet_quadruplet_edge_index",
+            "chemrl_gem_angle_edge_index",
         }:
             return 1
         return super().__cat_dim__(key, value, *args, **kwargs)

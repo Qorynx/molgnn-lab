@@ -9,12 +9,15 @@ from torch_geometric.data.data import BaseData
 
 from molgnn.data import MolecularData
 from molgnn.featurizer import featurize_smiles
-from molgnn.models.attentivefp_2020 import AttentiveFP
 from molgnn.models.ampnn_emnn_2020 import AMPNN, EMNN
+from molgnn.models.attentivefp_2020 import AttentiveFP
+from molgnn.models.chemrl_gem_2022 import ChemRLGEM, ChemRLGEMPretrainer
+from molgnn.models.chemrl_gem_2022.pretraining import build_geometry_pretraining_targets
 from molgnn.models.contracts import validate_batched_molecular_graph
-from molgnn.models.dmpnn_2024 import DMPNN
 from molgnn.models.dimenet_2020 import DimeNet2020
+from molgnn.models.dmpnn_2024 import DMPNN
 from molgnn.models.gcn_baseline import GCNBaseline
+from molgnn.models.graphmvp_2022 import GraphMVP
 from molgnn.models.hignn_2023 import HiGNN
 from molgnn.models.himnet_2026 import HimNet
 from molgnn.models.molecular_graph_embedding_2017 import MolecularGraphEmbedding
@@ -24,11 +27,13 @@ from molgnn.models.resgat_2024 import ResGAT
 from molgnn.models.trimnet_2020 import TrimNet2020
 from molgnn.models.weave_2016 import Weave
 from molgnn.transforms import (
+    add_ampnn_edge_types,
+    add_chemrl_gem_inputs,
     add_brics_fragments,
     add_coley_2017_features,
     add_dimenet_inputs,
+    add_graphmvp_inputs,
     add_himnet_inputs,
-    add_ampnn_edge_types,
     add_mpnn_edge_types,
     add_potentialnet_inputs,
     add_reverse_edge_index,
@@ -42,6 +47,85 @@ def _canonical_batch(*smiles: str) -> Batch:
         for index, value in enumerate(smiles)
     ]
     return Batch.from_data_list(list[BaseData](samples))
+
+
+def test_graphmvp_profiles_train_and_batch_without_geometry() -> None:
+    samples = [
+        add_graphmvp_inputs(
+            featurize_smiles(value, targets=[0.0], target_mask=[True], sample_id=index)
+        )
+        for index, value in enumerate(("CCO", "c1ccccc1"))
+    ]
+    batch = Batch.from_data_list(list[BaseData](samples))
+    for profile in ("simple", "ogb_full"):
+        model = GraphMVP(
+            atom_dim=153,
+            bond_dim=14,
+            num_targets=1,
+            feature_profile=profile,
+            hidden_dim=8,
+            num_layers=2,
+            dropout=0.0,
+        )
+        prediction = model(batch)
+        assert prediction.shape == (2, 1)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        optimizer.zero_grad(set_to_none=True)
+        prediction.sum().backward()
+        optimizer.step()
+
+
+def test_chemrl_gem_builds_line_graph_and_trains_on_batched_geometry() -> None:
+    samples = [
+        add_chemrl_gem_inputs(
+            featurize_smiles(value, targets=[0.0], target_mask=[True], sample_id=index)
+        )
+        for index, value in enumerate(("CCO", "c1ccccc1", "C"))
+    ]
+    batch = Batch.from_data_list(list[BaseData](samples))
+    model = ChemRLGEM(
+        atom_dim=153,
+        bond_dim=14,
+        num_targets=2,
+        hidden_dim=8,
+        num_layers=2,
+        dropout=0.0,
+    )
+    prediction = model(batch)
+    assert prediction.shape == (3, 2)
+    assert batch.chemrl_gem_angle_edge_index.numel() == 2 * sum(
+        sample.chemrl_gem_angle_edge_index.shape[1] for sample in samples
+    )
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer.zero_grad(set_to_none=True)
+    prediction.square().mean().backward()
+    optimizer.step()
+
+
+def test_chemrl_gem_pretraining_heads_take_one_step() -> None:
+    samples = [
+        add_chemrl_gem_inputs(
+            featurize_smiles(value, targets=[0.0], target_mask=[True], sample_id=index)
+        )
+        for index, value in enumerate(("CCO", "C"))
+    ]
+    batch = Batch.from_data_list(list[BaseData](samples))
+    targets = build_geometry_pretraining_targets(batch)
+    targets["Cm_node_i"] = torch.arange(batch.num_nodes)
+    targets["Cm_context_id"] = torch.zeros(batch.num_nodes, dtype=torch.long)
+    targets["Fg_label"] = torch.zeros((batch.num_graphs, 494), dtype=torch.float32)
+    model = ChemRLGEMPretrainer(
+        embed_dim=8,
+        layer_num=2,
+        hidden_size=8,
+        dropout=0.0,
+    )
+    losses = model(batch, targets)
+    assert {"Cm_loss", "Fg_loss", "Bar_loss", "Blr_loss", "Adc_loss", "loss"} <= set(losses)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer.zero_grad(set_to_none=True)
+    losses["loss"].backward()
+    optimizer.step()
 
 
 def _potentialnet_batch() -> Batch:

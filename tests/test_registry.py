@@ -327,10 +327,10 @@ def test_unknown_model_lists_available_models() -> None:
     register_builtin_models()
     with pytest.raises(
         RegistryError,
-        match="Available models: ampnn, attentivefp, dimenet, dmpnn, egnn, emnn, eqgat, equiformer, ewaldmp, fragnet, "
-        "gcn_baseline, gemnet_q, gemnet_t, gpspp, graphormer, grover, hignn, himnet, hmgnn, mat, molclr_gcn, "
+        match="Available models: ampnn, attentivefp, chemrl_gem, dimenet, dmpnn, egnn, emnn, eqgat, equiformer, ewaldmp, fragnet, "
+        "gcn_baseline, gemnet_q, gemnet_t, gpspp, graphmvp, graphormer, grover, hignn, himnet, hmgnn, mat, molclr_gcn, "
         "molclr_gin, molebert, molecular_graph_embedding, mpnn, mpnn_3d_distance_bins, "
-        "mvgnn_cross, painn, potentialnet, resgat, schnet, transformer_m, trimnet_2020, visnet, weave",
+        "mvgnn_cross, neural_fingerprint, painn, potentialnet, resgat, schnet, transformer_m, trimnet_2020, visnet, weave",
     ):
         build_model("missing", {}, BuildContext(1, 1, 1))
 
@@ -346,6 +346,7 @@ def test_benchmark_selection_uses_default_order_and_preserves_explicit_order() -
 
     assert tuple(spec.name for spec in benchmark_models()) == (
         "gcn_baseline",
+        "neural_fingerprint",
         "attentivefp",
         "ampnn",
         "dmpnn",
@@ -363,6 +364,8 @@ def test_benchmark_selection_uses_default_order_and_preserves_explicit_order() -
         "molclr_gin",
         "molclr_gcn",
         "molebert",
+        "graphmvp",
+        "chemrl_gem",
     )
     assert tuple(
         spec.name for spec in resolve_benchmark_models(("dmpnn", "gcn_baseline"))

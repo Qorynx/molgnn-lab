@@ -1,18 +1,41 @@
 """Durable regression checks for architecture invariants and runtime contracts."""
 
+from pathlib import Path
+
 import torch
 from torch_geometric.loader import DataLoader
 
 from molgnn.featurizer import featurize_smiles
 from molgnn.models.dimenet_2020 import DimeNet2020
+from molgnn.models.chemrl_gem_2022 import ChemRLGEMEncoder
+from molgnn.models.chemrl_gem_2022.checkpoint import load_chemrl_gem_encoder
 from molgnn.models.hignn_2023 import HiGNN
 from molgnn.models.himnet_2026 import HimNet
 from molgnn.models.mpnn_2017 import MPNN, MPNNDistanceBins3D
 from molgnn.models.potentialnet_2018 import PotentialNet
-from molgnn.models.weave_2016 import Weave
 from molgnn.models.registration import register_builtin_models
+from molgnn.models.weave_2016 import Weave
 from molgnn.registry import available_models, get_model_spec
 from molgnn.transforms import add_brics_fragments, add_himnet_inputs
+
+
+def test_chemrl_gem_encoder_has_official_tensor_schema() -> None:
+    encoder = ChemRLGEMEncoder()
+    state = encoder.state_dict()
+    assert len(state) == 164
+    assert state["init_atom_embedding.embed_list.0.weight"].shape == (124, 32)
+    assert state["init_atom_embedding.embed_list.1.weight"].shape == (22, 32)
+    assert state["init_bond_embedding.embed_list.1.weight"].shape == (27, 32)
+    assert state["bond_angle_float_rbf_list.0.linear_list.0.weight"].shape == (32, 32)
+
+
+def test_chemrl_gem_official_checkpoints_load_strictly() -> None:
+    root = Path(__file__).resolve().parents[1]
+    checkpoint_root = root / "pretrained" / "chemrl_gem_2022" / "pretrain_models-chemrl_gem"
+    for filename in ("class.pdparams", "regr.pdparams"):
+        encoder = ChemRLGEMEncoder()
+        info = load_chemrl_gem_encoder(encoder, checkpoint_root / filename)
+        assert info["tensor_count"] == 164
 
 
 def _hignn_batch():
@@ -50,6 +73,7 @@ def test_builtin_models_expose_runtime_input_contracts() -> None:
         "molclr_gin",
         "molclr_gcn",
         "molebert",
+        "graphmvp",
     }
     assert expected <= set(available_models())
     for name in expected:

@@ -6,6 +6,7 @@ from ..registry import available_models, register_model
 from .ampnn_emnn_2020.ampnn import AMPNN
 from .ampnn_emnn_2020.emnn import EMNN
 from .attentivefp_2020 import AttentiveFP
+from .chemrl_gem_2022 import ChemRLGEM
 from .dimenet_2020 import DimeNet2020
 from .dmpnn_2024 import DMPNN
 from .egnn_2021 import EGNN
@@ -16,6 +17,7 @@ from .fragnet_2026 import FragNet
 from .gcn_baseline import GCNBaseline
 from .gemnet_2021 import GemNetQ, GemNetT
 from .gpspp_2023 import GPSPlusPlus
+from .graphmvp_2022 import GraphMVP
 from .graphormer_2021 import Graphormer
 from .grover_2021 import GROVER
 from .hignn_2023 import HiGNN
@@ -27,6 +29,7 @@ from .molebert_2023 import MoleBERT
 from .molecular_graph_embedding_2017 import MolecularGraphEmbedding
 from .mpnn_2017 import MPNN, MPNNDistanceBins3D
 from .mvgnn_2020 import MVGNNcross
+from .neural_fingerprint_2015 import NeuralFingerprint
 from .painn_2021 import PaiNN
 from .potentialnet_2018 import PotentialNet
 from .resgat_2024 import ResGAT
@@ -47,6 +50,16 @@ def register_builtin_models() -> None:
             prediction_reducer_name="identity",
             benchmark_order=10,
         )(GCNBaseline)
+    if "neural_fingerprint" not in available_models():
+        register_model(
+            "neural_fingerprint",
+            required_batch_fields=NeuralFingerprint.required_batch_fields,
+            graph_transform_name="neural_fingerprint_inputs",
+            transform_output_fields=("neural_fp_x", "neural_fp_edge_attr"),
+            prediction_reducer_name="identity",
+            benchmark_enabled=True,
+            benchmark_order=15,
+        )(NeuralFingerprint)
     if "attentivefp" not in available_models():
         register_model(
             "attentivefp",
@@ -499,6 +512,60 @@ def register_builtin_models() -> None:
             benchmark_enabled=True,
             benchmark_order=83,
         )(MoleBERT)
+    if "graphmvp" not in available_models():
+        register_model(
+            "graphmvp",
+            default_parameters=dict(
+                feature_profile="simple",
+                hidden_dim=300,
+                num_layers=5,
+                jk="last",
+                dropout=0.0,
+                pooling="mean",
+                pretrained_checkpoint=None,
+            ),
+            required_batch_fields=GraphMVP.required_batch_fields,
+            graph_transform_name="graphmvp_inputs",
+            transform_output_fields=(
+                "graphmvp_simple_atom_attr",
+                "graphmvp_simple_bond_attr",
+                "graphmvp_ogb_atom_attr",
+                "graphmvp_ogb_bond_attr",
+            ),
+            prediction_reducer_name="identity",
+            benchmark_enabled=True,
+            benchmark_order=85,
+        )(GraphMVP)
+    if "chemrl_gem" not in available_models():
+        register_model(
+            "chemrl_gem",
+            default_parameters=dict(
+                hidden_dim=32,
+                num_layers=8,
+                dropout=0.5,
+                pooling="mean",
+                head_layers=2,
+                head_hidden_dim=128,
+                head_dropout=0.2,
+                pretrained_variant="none",
+                pretrained_checkpoint=None,
+            ),
+            required_batch_fields=ChemRLGEM.required_batch_fields,
+            graph_transform_name="chemrl_gem_inputs",
+            transform_output_fields=(
+                "chemrl_gem_atom_attr",
+                "chemrl_gem_edge_index",
+                "chemrl_gem_bond_attr",
+                "chemrl_gem_bond_length",
+                "chemrl_gem_angle_edge_index",
+                "chemrl_gem_bond_angle",
+            ),
+            geometry_requirement="required",
+            geometry_role="hybrid",
+            prediction_reducer_name="identity",
+            benchmark_enabled=True,
+            benchmark_order=86,
+        )(ChemRLGEM)
 
 
 __all__ = ["register_builtin_models"]
