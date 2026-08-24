@@ -1,0 +1,35 @@
+model: chemrl_gem_2022
+paper: "Geometry-enhanced molecular representation learning for property prediction"
+source_repository: "PaddlePaddle/PaddleHelix"
+source_checkout_revision: "8e3991ab1209134b148b05d44e784a43eaa4484d"
+gem_core_revision: "c059a28aad7bb017885cf8e38cc33fa24e04016f"
+download_url: "https://baidu-nlp.bj.bcebos.com/PaddleHelix/pretrained_models/compound/pretrain_models-chemrl_gem.tgz"
+downloaded_at: "2026-08-24"
+archive:
+  path: "pretrain_models-chemrl_gem.tgz"
+  size_bytes: 762672
+  sha256: "00944b1097ef26672fa524cafe8c007018c28b1b0bc4d1768777850111431946"
+artifacts:
+  - variant: classification
+    path: "pretrain_models-chemrl_gem/class.pdparams"
+    format: "paddle_state_dict_pickle_numpy"
+    size_bytes: 422302
+    sha256: "2c315b6eca37843f45a6431fd6e32ad1b610d25d79a42c197e55ce7fe1c226fa"
+    tensor_count: 164
+  - variant: regression
+    path: "pretrain_models-chemrl_gem/regr.pdparams"
+    format: "paddle_state_dict_pickle_numpy"
+    size_bytes: 422302
+    sha256: "c99f34c8145ba9f0030193e844a4d39801dcfd33d54ae3fc828d034a58e5b67f"
+    tensor_count: 164
+scope: "GeoGNN encoder weights only; downstream heads are not included."
+license: "UNKNOWN"
+license_notes: >-
+  Source-file headers identify Apache-2.0, while the inspected PaddleHelix
+  checkout has a CC BY-NC-SA 4.0 root LICENSE. No artifact-specific license
+  was found next to this download, so redistribution rights are not inferred.
+safety_notes: >-
+  The .pdparams files are pickle-based Paddle artifacts. Load only through the
+  planned allowlisted converter; never pass an untrusted file to unrestricted
+  pickle.load.
+
