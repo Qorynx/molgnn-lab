@@ -46,6 +46,7 @@ from .spherenet_2022 import SphereNet2022
 from .three_d_infomax_2022 import ThreeDInfomax
 from .transformer_m_2023 import TransformerM
 from .trimnet_2020 import TrimNet2020
+from .unimol_2023 import UniMol
 from .visnet_2023 import ViSNet
 from .weave_2016 import Weave
 
@@ -634,6 +635,22 @@ def register_builtin_models() -> None:
             benchmark_enabled=True,
             benchmark_order=81,
         )(MolCLRGCN)
+    if "unimol" not in available_models():
+        register_model(
+            "unimol",
+            default_parameters=dict(
+                embed_dim=64, ffn_embed_dim=128, num_layers=2, num_heads=2,
+                num_gaussian_kernels=8, dropout=0.1, attention_dropout=0.1,
+                activation_dropout=0.0, pooler_dropout=0.0, max_seq_len=512,
+            ),
+            required_batch_fields=UniMol.required_batch_fields,
+            optional_batch_fields=(),
+            graph_transform_name="unimol_inputs",
+            transform_output_fields=("pos",),
+            prediction_reducer_name="identity",
+            benchmark_enabled=True,
+            benchmark_order=82,
+        )(UniMol)
     if "molebert" not in available_models():
         register_model(
             "molebert",

@@ -118,6 +118,7 @@ def test_builtin_models_expose_runtime_input_contracts() -> None:
         "potentialnet",
         "pvd_torchmd_et",
         "trimnet_2020",
+        "unimol",
         "weave",
         "egnn",
         "mat",
