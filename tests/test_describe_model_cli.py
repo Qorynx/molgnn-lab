@@ -128,6 +128,30 @@ def test_describe_model_reports_dimenet_coordinate_contract(capsys) -> None:
     assert payload["benchmark_order"] == 32
 
 
+def test_describe_model_reports_dimenet_pp_coordinate_contract(capsys) -> None:
+    exit_code = main(["describe-model", "--model", "dimenet_pp", "--format", "json"])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 0
+    assert captured.err == ""
+    assert payload["name"] == "dimenet_pp"
+    assert payload["required_batch_fields"] == [
+        "atomic_number",
+        "pos",
+        "dimenet_edge_index",
+        "dimenet_triplet_edge_index",
+        "batch",
+    ]
+    assert payload["optional_batch_fields"] == []
+    assert payload["graph_transform_name"] == "dimenet_inputs"
+    assert payload["prediction_reducer_name"] == "identity"
+    assert payload["geometry_requirement"] == "required"
+    assert payload["geometry_role"] == "pure_3d"
+    assert payload["benchmark_enabled"] is False
+    assert payload["benchmark_order"] == 42
+
+
 def test_describe_model_reports_gpspp_contract(capsys) -> None:
     exit_code = main(["describe-model", "--model", "gpspp", "--format", "json"])
 

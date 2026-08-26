@@ -10,13 +10,15 @@ if TYPE_CHECKING:
     from .ampnn_emnn_2020.data import EMNNData as EMNNData
     from .ampnn_emnn_2020.emnn import EMNN as EMNN
     from .attentivefp_2020 import AttentiveFP as AttentiveFP
+    from .attentivefp_2020 import AttentiveFPTrace as AttentiveFPTrace
+    from .base import BaseMolecularModel as BaseMolecularModel
     from .chemrl_gem_2022 import ChemRLGEM as ChemRLGEM
     from .chemrl_gem_2022 import ChemRLGEMPretrainer as ChemRLGEMPretrainer
     from .chemrl_gem_2022 import GeoGNNEncoder as GeoGNNEncoder
-    from .attentivefp_2020 import AttentiveFPTrace as AttentiveFPTrace
-    from .base import BaseMolecularModel as BaseMolecularModel
+    from .dgt_2026 import DGT2026 as DGT2026
     from .dimenet_2020 import DimeNet2020 as DimeNet2020
     from .dimenet_2020 import DimeNetData as DimeNetData
+    from .dimenet_pp_2020 import DimeNetPlusPlus2020 as DimeNetPlusPlus2020
     from .dmpnn_2024 import DMPNN as DMPNN
     from .dmpnn_2024 import DMPNNData as DMPNNData
     from .egnn_2021 import EGNN as EGNN
@@ -35,6 +37,7 @@ if TYPE_CHECKING:
     from .himnet_2026 import HimNet as HimNet
     from .himnet_2026 import HimNetData as HimNetData
     from .mat_2020 import MAT as MAT
+    from .mgcn_2019 import MGCN as MGCN
     from .molclr_2022.model import MolCLRGCN as MolCLRGCN
     from .molclr_2022.model import MolCLRGIN as MolCLRGIN
     from .molebert_2023 import MoleBERT as MoleBERT
@@ -46,8 +49,10 @@ if TYPE_CHECKING:
     from .mpnn_2017 import MPNNDistanceBins3D as MPNNDistanceBins3D
     from .neural_fingerprint_2015 import NeuralFingerprint as NeuralFingerprint
     from .potentialnet_2018 import PotentialNet as PotentialNet
+    from .pretrain_gnns_2020 import PretrainGNNs as PretrainGNNs
     from .registration import register_builtin_models as register_builtin_models
     from .resgat_2024 import ResGAT as ResGAT
+    from .spherenet_2022 import SphereNet2022 as SphereNet2022
     from .transformer_m_2023 import TransformerM as TransformerM
     from .trimnet_2020 import TrimNet2020 as TrimNet2020
     from .weave_2016 import Weave as Weave
@@ -63,8 +68,10 @@ _EXPORTS = {
     "ColeyGraphConv": (".molecular_graph_embedding_2017", "ColeyGraphConv"),
     "DMPNN": (".dmpnn_2024", "DMPNN"),
     "DMPNNData": (".dmpnn_2024", "DMPNNData"),
+    "DGT2026": (".dgt_2026", "DGT2026"),
     "DimeNet2020": (".dimenet_2020", "DimeNet2020"),
     "DimeNetData": (".dimenet_2020", "DimeNetData"),
+    "DimeNetPlusPlus2020": (".dimenet_pp_2020", "DimeNetPlusPlus2020"),
     "EGNN": (".egnn_2021", "EGNN"),
     "EMNN": (".ampnn_emnn_2020.emnn", "EMNN"),
     "EMNNData": (".ampnn_emnn_2020.data", "EMNNData"),
@@ -82,6 +89,7 @@ _EXPORTS = {
     "HimNet": (".himnet_2026", "HimNet"),
     "HimNetData": (".himnet_2026", "HimNetData"),
     "MAT": (".mat_2020", "MAT"),
+    "MGCN": (".mgcn_2019", "MGCN"),
     "MolCLRGCN": (".molclr_2022.model", "MolCLRGCN"),
     "MolCLRGIN": (".molclr_2022.model", "MolCLRGIN"),
     "MoleBERT": (".molebert_2023", "MoleBERT"),
@@ -95,7 +103,9 @@ _EXPORTS = {
     "NTNConv": (".hignn_2023", "NTNConv"),
     "NeuralFingerprint": (".neural_fingerprint_2015", "NeuralFingerprint"),
     "PotentialNet": (".potentialnet_2018", "PotentialNet"),
+    "PretrainGNNs": (".pretrain_gnns_2020", "PretrainGNNs"),
     "ResGAT": (".resgat_2024", "ResGAT"),
+    "SphereNet2022": (".spherenet_2022", "SphereNet2022"),
     "TransformerM": (".transformer_m_2023", "TransformerM"),
     "TrimNet2020": (".trimnet_2020", "TrimNet2020"),
     "Weave": (".weave_2016", "Weave"),
@@ -117,45 +127,50 @@ def __getattr__(name: str) -> Any:
 
 __all__ = (
     "AMPNN",
+    "DGT2026",
+    "DMPNN",
+    "EGNN",
+    "EMNN",
+    "GROVER",
+    "MAT",
+    "MGCN",
+    "MPNN",
     "AttentiveFP",
-    "ChemRLGEM",
-    "ChemRLGEMPretrainer",
-    "GeoGNNEncoder",
     "AttentiveFPTrace",
     "BaseMolecularModel",
+    "ChemRLGEM",
+    "ChemRLGEMPretrainer",
     "ColeyGraphConv",
-    "DMPNN",
     "DMPNNData",
     "DimeNet2020",
     "DimeNetData",
-    "EGNN",
-    "EMNN",
+    "DimeNetPlusPlus2020",
     "EMNNData",
     "Equiformer",
     "FeatureAttention",
     "FragNet",
     "GCNBaseline",
     "GPSPlusPlus",
+    "GeoGNNEncoder",
     "GraphMVP",
     "GraphMVPPretrainer",
     "Graphormer",
-    "GROVER",
     "HiGNN",
     "HiGNNData",
     "HimNet",
     "HimNetData",
-    "MAT",
+    "MPNNDistanceBins3D",
+    "MVGNNcross",
     "MolCLRGCN",
     "MolCLRGIN",
     "MoleBERT",
     "MolecularGraphEmbedding",
-    "MPNN",
-    "MPNNDistanceBins3D",
-    "MVGNNcross",
     "NTNConv",
     "NeuralFingerprint",
     "PotentialNet",
+    "PretrainGNNs",
     "ResGAT",
+    "SphereNet2022",
     "TransformerM",
     "TrimNet2020",
     "Weave",

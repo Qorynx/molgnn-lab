@@ -1,0 +1,48 @@
+model: pretrain_gnns_2020
+paper: "Strategies for Pre-Training Graph Neural Networks (ICLR 2020)"
+source_repository: "snap-stanford/pretrain-gnns"
+source_checkout_revision: "8b20528a83b8869ce16451305b32c827258d19a3"
+core_chemistry_revision: "6e69a06692b6870fbb381f336131314a42a0e983"
+downloaded_at: "2026-08-26"
+feature_schema:
+  atom: "[atomic-number index (Z-1), chirality index (0=unspecified, 1=CW, 2=CCW, 3=other)]"
+  bond: "[bond-type index (0=single, 1=double, 2=triple, 3=aromatic), bond-direction index (0=none, 1=endupright, 2=enddownright)]"
+  self_loop_bond_type: 4
+  mask_atom_token: 119
+  mask_bond_type: 5
+encoder_profile:
+  num_layer: 5
+  emb_dim: 300
+  jk: last
+  tensor_count: 57
+checkpoint_adaptation:
+  chirality_embedding_rows: "official x_embedding2 has 3 rows; the loader expands to 4 by copying the unspecified row into the new 'other' row (index 3)"
+artifacts:
+  - variant: contextpred
+    path: "contextpred.pth"
+    size_bytes: 7452448
+    sha256: "9538CEF4C19EA734BE8490A8EDA8E17F9CB5DF76A77EF069C6A8D5F5B8195564"
+  - variant: masking
+    path: "masking.pth"
+    size_bytes: 7452448
+    sha256: "77DD7F4EEEB16200BE1D001411972D0EDB04BD406023CA8AB4EAA18F772AA9E4"
+  - variant: supervised_contextpred
+    path: "supervised_contextpred.pth"
+    size_bytes: 7452448
+    sha256: "107197F159E9A26ED9A026B655560AC341D2D7DDEC4A8D2540E83C9F87E256AC"
+  - variant: supervised_masking
+    path: "supervised_masking.pth"
+    size_bytes: 7452448
+    sha256: "375CD40AF9F21D2A92ED1ACBDEA9EFAD14254C36703BB0E3A7E433E09E624CE1"
+scope: >-
+  Pure molecular GIN encoder state dicts (57 tensors each). No pretraining
+  heads, context GNNs or downstream prediction heads are included, matching
+  the official torch.save(model.gnn.state_dict()) contract.
+license: "MIT (source repository LICENSE)"
+license_notes: >-
+  Source code and the tracked checkpoints are distributed under the MIT
+  license in the official repository. Provenance recorded per project policy.
+safety_notes: >-
+  Load only through molgnn.models.pretrain_gnns_2020.checkpoint, which uses
+  torch.load(..., weights_only=True) plus SHA-256 verification and strict
+  key/shape checks with the documented chirality adaptation.

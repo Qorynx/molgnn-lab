@@ -34,6 +34,8 @@ class MolecularData(Data):
     neural_fp_edge_attr: Tensor
     molebert_atom_attr: Tensor
     molebert_bond_attr: Tensor
+    pretrain_gnns_atom_attr: Tensor
+    pretrain_gnns_bond_attr: Tensor
     graphmvp_simple_atom_attr: Tensor
     graphmvp_simple_bond_attr: Tensor
     graphmvp_ogb_atom_attr: Tensor
@@ -77,6 +79,8 @@ class MolecularData(Data):
     weave_pair_attr: Tensor
     pos: Tensor
     ligand_mask: Tensor
+    mgcn_edge_index: Tensor
+    mgcn_geometry_is_proxy: Tensor
     potentialnet_bond_edge_index: Tensor
     potentialnet_bond_edge_type: Tensor
     potentialnet_stage2_edge_index: Tensor
@@ -93,6 +97,19 @@ class MolecularData(Data):
     frag_connection_features: Tensor
     edge_index_fbonds: Tensor
     edge_attr_fbonds: Tensor
+    spherenet_edge_index: Tensor
+    spherenet_triplet_edge_index: Tensor
+    spherenet_torsion_pair_index: Tensor
+    spherenet_geometry_is_proxy: Tensor
+    dgt_e2e_edge_index: Tensor
+    dgt_e2e_node_index: Tensor
+    dgt_e_batch: Tensor
+    dgt_spd_index: Tensor
+    dgt_spd_lengths: Tensor
+    dgt_e2e_spd_index: Tensor
+    dgt_e2e_spd_lengths: Tensor
+    dgt_rwse: Tensor
+    dgt_e2e_rwse: Tensor
 
     def __inc__(self, key: str, value: Any, *args: Any, **kwargs: Any) -> Any:
         """Offset model-specific local indices when PyG batches graphs."""
@@ -115,6 +132,36 @@ class MolecularData(Data):
                     "dimenet_triplet_edge_index"
                 )
             return dimenet_edge_index.shape[1]
+        if key == "spherenet_triplet_edge_index":
+            spherenet_edge_index = getattr(self, "spherenet_edge_index", None)
+            if not isinstance(spherenet_edge_index, Tensor):
+                raise ValueError(
+                    "MolecularData requires spherenet_edge_index to batch "
+                    "spherenet_triplet_edge_index"
+                )
+            return spherenet_edge_index.shape[1]
+        if key == "spherenet_torsion_pair_index":
+            # Row 0 references the local triplet list, row 1 the local edge
+            # list, so the increment differs per row.
+            spherenet_edge_index = getattr(self, "spherenet_edge_index", None)
+            spherenet_triplet_edge_index = getattr(
+                self, "spherenet_triplet_edge_index", None
+            )
+            if not isinstance(spherenet_edge_index, Tensor) or not isinstance(
+                spherenet_triplet_edge_index, Tensor
+            ):
+                raise ValueError(
+                    "MolecularData requires spherenet_edge_index and "
+                    "spherenet_triplet_edge_index to batch "
+                    "spherenet_torsion_pair_index"
+                )
+            return torch.tensor(
+                [
+                    [int(spherenet_triplet_edge_index.shape[1])],
+                    [int(spherenet_edge_index.shape[1])],
+                ],
+                dtype=torch.long,
+            )
         if key in {"gemnet_reverse_edge_index", "gemnet_triplet_edge_index"}:
             gemnet_edge_index = getattr(self, "gemnet_edge_index", None)
             if not isinstance(gemnet_edge_index, Tensor):
@@ -189,6 +236,8 @@ class MolecularData(Data):
             "gemnet_triplet_edge_index",
             "gemnet_quadruplet_edge_index",
             "chemrl_gem_angle_edge_index",
+            "spherenet_triplet_edge_index",
+            "spherenet_torsion_pair_index",
         }:
             return 1
         return super().__cat_dim__(key, value, *args, **kwargs)

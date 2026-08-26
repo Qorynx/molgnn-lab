@@ -49,6 +49,29 @@ def test_native_geometry_is_preserved() -> None:
     assert enriched.geometry_is_proxy.tolist() == [False]
 
 
+def test_mgcn_transform_preserves_native_geometry_and_provenance() -> None:
+    from molgnn.transforms.mgcn import add_mgcn_inputs
+
+    sample = _sample("CCO")
+    native_pos = torch.tensor(
+        [[0.0, 0.0, 0.0], [1.4, 0.1, 0.2], [2.0, 1.1, -0.3]],
+        dtype=torch.float32,
+    )
+    sample.pos = native_pos
+    sample.atomic_number = torch.tensor([6, 6, 8], dtype=torch.long)
+
+    transformed = add_mgcn_inputs(sample)
+
+    # Supplied coordinates and atomic numbers are preserved exactly.
+    assert torch.equal(transformed.pos, native_pos)
+    assert torch.equal(transformed.atomic_number, sample.atomic_number)
+    assert transformed.mgcn_geometry_is_proxy.tolist() == [False]
+    # The proxy path is marked and the complete graph is built from pos.
+    proxy = add_mgcn_inputs(_sample("CCO"))
+    assert proxy.mgcn_geometry_is_proxy.tolist() == [True]
+    assert torch.equal(proxy.pos, proxy.pos)
+
+
 def test_coordinate_model_transforms_consume_shared_geometry() -> None:
     register_builtin_models()
     register_builtin_transforms()
@@ -56,6 +79,8 @@ def test_coordinate_model_transforms_consume_shared_geometry() -> None:
 
     expected_fields = {
         "dimenet": "dimenet_triplet_edge_index",
+        "dimenet_pp": "dimenet_triplet_edge_index",
+        "mgcn": "mgcn_edge_index",
         "mpnn_3d_distance_bins": "mpnn_3d_edge_type",
         "fragnet": "edge_index_bonds_graph",
     }
@@ -72,6 +97,7 @@ def test_builtin_geometry_contracts_and_single_generator_location() -> None:
     register_builtin_models()
     required = {
         "dimenet",
+        "dimenet_pp",
         "egnn",
         "eqgat",
         "equiformer",
@@ -81,6 +107,7 @@ def test_builtin_geometry_contracts_and_single_generator_location() -> None:
         "gemnet_t",
         "hmgnn",
         "mat",
+        "mgcn",
         "mpnn_3d_distance_bins",
         "painn",
         "schnet",

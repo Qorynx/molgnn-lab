@@ -8,38 +8,46 @@ from torch_geometric.data import Batch
 from torch_geometric.data.data import BaseData
 
 from molgnn.data import MolecularData
-from molgnn.featurizer import featurize_mol, featurize_smiles
+from molgnn.featurizer import featurize_smiles
 from molgnn.models.ampnn_emnn_2020 import AMPNN, EMNN
 from molgnn.models.attentivefp_2020 import AttentiveFP
 from molgnn.models.chemrl_gem_2022 import ChemRLGEM, ChemRLGEMPretrainer
 from molgnn.models.chemrl_gem_2022.pretraining import build_geometry_pretraining_targets
 from molgnn.models.contracts import validate_batched_molecular_graph
+from molgnn.models.dgt_2026 import DGT2026
 from molgnn.models.dimenet_2020 import DimeNet2020
+from molgnn.models.dimenet_pp_2020 import DimeNetPlusPlus2020
 from molgnn.models.dmpnn_2024 import DMPNN
 from molgnn.models.gcn_baseline import GCNBaseline
 from molgnn.models.graphmvp_2022 import GraphMVP
 from molgnn.models.hignn_2023 import HiGNN
 from molgnn.models.himnet_2026 import HimNet
 from molgnn.models.kpgt_2022 import KPGT
+from molgnn.models.mgcn_2019 import MGCN
 from molgnn.models.molecular_graph_embedding_2017 import MolecularGraphEmbedding
-from molgnn.models.three_d_infomax_2022 import ThreeDInfomax
 from molgnn.models.mpnn_2017 import MPNN
 from molgnn.models.potentialnet_2018 import PotentialNet
+from molgnn.models.pretrain_gnns_2020 import PretrainGNNs
 from molgnn.models.resgat_2024 import ResGAT
+from molgnn.models.spherenet_2022 import SphereNet2022
+from molgnn.models.three_d_infomax_2022 import ThreeDInfomax
 from molgnn.models.trimnet_2020 import TrimNet2020
 from molgnn.models.weave_2016 import Weave
 from molgnn.transforms import (
     add_ampnn_edge_types,
-    add_chemrl_gem_inputs,
     add_brics_fragments,
+    add_chemrl_gem_inputs,
     add_coley_2017_features,
     add_dimenet_inputs,
     add_graphmvp_inputs,
     add_himnet_inputs,
     add_kpgt_inputs,
+    add_mgcn_inputs,
     add_mpnn_edge_types,
     add_potentialnet_inputs,
+    add_pretrain_gnns_inputs,
     add_reverse_edge_index,
+    add_spherenet_inputs,
     add_three_d_infomax_inputs,
     add_weave_inputs,
 )
@@ -51,6 +59,71 @@ def _canonical_batch(*smiles: str) -> Batch:
         for index, value in enumerate(smiles)
     ]
     return Batch.from_data_list(list[BaseData](samples))
+
+
+def test_pretrain_gnns_transform_follows_arbitrary_edge_order() -> None:
+    sample = featurize_smiles(
+        "F/C=C/F", targets=[0.0], target_mask=[True], sample_id=0
+    )
+    reference = add_pretrain_gnns_inputs(sample)
+    permutation = torch.arange(reference.edge_index.shape[1] - 1, -1, -1)
+    shuffled = reference.clone()
+    shuffled.edge_index = reference.edge_index[:, permutation]
+    shuffled.edge_attr = reference.edge_attr[permutation].clone()
+    shuffled = add_pretrain_gnns_inputs(shuffled)
+    assert torch.equal(
+        shuffled.pretrain_gnns_bond_attr,
+        reference.pretrain_gnns_bond_attr[permutation],
+    )
+
+
+def test_pretrain_gnns_singleton_batch_trains() -> None:
+    sample = add_pretrain_gnns_inputs(
+        featurize_smiles("C", targets=[0.0], target_mask=[True], sample_id=0)
+    )
+    batch = Batch.from_data_list([sample])
+    model = PretrainGNNs(num_targets=1, num_layer=2, emb_dim=8, drop_ratio=0.0)
+    prediction = model(batch)
+    assert prediction.shape == (1, 1)
+    assert torch.isfinite(prediction).all()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer.zero_grad(set_to_none=True)
+    prediction.sum().backward()
+    optimizer.step()
+
+
+def test_pretrain_gnns_contextpred_projects_concat_widths() -> None:
+    from molgnn.models.pretrain_gnns_2020.context import build_context_pair_batch
+    from molgnn.models.pretrain_gnns_2020.pretraining import PretrainingLifecycle
+
+    samples = [
+        add_pretrain_gnns_inputs(
+            featurize_smiles(
+                value, targets=[0.0], target_mask=[True], sample_id=index
+            )
+        )
+        for index, value in enumerate(("CCCCCCCCCC", "CCOCCOCCOCC"))
+    ]
+    pair_batch = build_context_pair_batch(
+        samples, k=2, csize=2, generator=torch.Generator().manual_seed(7)
+    )
+    lifecycle = PretrainingLifecycle(
+        num_layer=3, context_layers=2, emb_dim=4, JK="concat", drop_ratio=0.0
+    )
+    optimizer = torch.optim.Adam(lifecycle.parameters(), lr=1e-3)
+    result = lifecycle.run_contextpred(pair_batch, optimizer)
+    assert result["loss"] is not None
+    assert torch.isfinite(torch.tensor(result["loss"]))
+
+
+def test_pretrain_gnns_checkpoint_variant_and_path_are_exclusive() -> None:
+    from molgnn.models.pretrain_gnns_2020.checkpoint import (
+        CheckpointError,
+        resolve_checkpoint_path,
+    )
+
+    with pytest.raises(CheckpointError, match="mutually exclusive"):
+        resolve_checkpoint_path("contextpred", "checkpoint.pth")
 
 
 def test_graphmvp_profiles_train_and_batch_without_geometry() -> None:
@@ -497,6 +570,104 @@ def test_dimenet_rejects_cross_graph_radius_edges() -> None:
         model(invalid)
 
 
+def test_dimenet_pp_rejects_cross_graph_radius_edges() -> None:
+    batch = _dimenet_batch()
+    model = DimeNetPlusPlus2020(
+        hidden_dim=4,
+        interaction_dim=2,
+        basis_dim=2,
+        output_dim=4,
+        num_blocks=1,
+        num_spherical=2,
+        num_radial=2,
+        num_before_skip=1,
+        num_after_skip=1,
+        num_dense_output=1,
+    )
+    assert model(batch).shape == (2, 1)
+
+    invalid = batch.clone()
+    invalid.dimenet_edge_index = batch.dimenet_edge_index.clone()
+    invalid.dimenet_edge_index[1, 0] = 3
+    with pytest.raises(
+        ValueError, match=r"dimenet_edge_index must not connect different graphs"
+    ):
+        model(invalid)
+
+
+def _spherenet_batch() -> Batch:
+    samples = []
+    for sample_id, shift in enumerate((0.0, 8.0)):
+        samples.append(
+            add_spherenet_inputs(
+                MolecularData(
+                    x=torch.zeros((3, 1), dtype=torch.float32),
+                    edge_index=torch.empty((2, 0), dtype=torch.long),
+                    edge_attr=torch.empty((0, 1), dtype=torch.float32),
+                    y=torch.zeros((1, 1), dtype=torch.float32),
+                    y_mask=torch.ones((1, 1), dtype=torch.bool),
+                    sample_id=torch.tensor([sample_id], dtype=torch.long),
+                    atomic_number=torch.tensor([6, 7, 8], dtype=torch.long),
+                    pos=torch.tensor(
+                        [[shift, 0.0, 0.0], [shift + 1.0, 0.0, 0.0], [shift, 1.0, 0.0]],
+                        dtype=torch.float32,
+                    ),
+                )
+            )
+        )
+    return Batch.from_data_list(list[BaseData](samples))
+
+
+def test_spherenet_accepts_batched_contract_and_rejects_cross_graph_edges() -> None:
+    batch = _spherenet_batch()
+    model = SphereNet2022(
+        hidden_dim=4,
+        interaction_dim=2,
+        output_dim=4,
+        basis_dim_distance=2,
+        basis_dim_angle=2,
+        basis_dim_torsion=2,
+        num_blocks=1,
+        num_spherical=2,
+        num_radial=2,
+        num_before_skip=1,
+        num_after_skip=1,
+        num_output_layers=1,
+    )
+    assert model(batch).shape == (2, 1)
+
+    invalid = batch.clone()
+    invalid.spherenet_edge_index = batch.spherenet_edge_index.clone()
+    invalid.spherenet_edge_index[1, 0] = 3
+    with pytest.raises(
+        ValueError, match=r"spherenet_edge_index must not connect different graphs"
+    ):
+        model(invalid)
+
+
+def test_dgt_forward_on_batched_contract() -> None:
+    from molgnn.transforms.dgt import add_dgt_inputs
+
+    samples = [
+        add_dgt_inputs(sample)
+        for sample in _canonical_batch("CC", "CCO").to_data_list()
+    ]
+    batch = Batch.from_data_list(list[BaseData](samples))
+    model = DGT2026(
+        dim_h=16,
+        num_heads=4,
+        num_layers=2,
+        dropout=0.0,
+        attn_dropout=0.0,
+        head_layers=1,
+        spd_max_length=4,
+        rwse_steps=4,
+    )
+    pred = model(batch)
+    assert pred.shape == (2, 1)
+    assert torch.isfinite(pred).all()
+
+
 def test_himnet_accepts_its_prepared_contract_and_rejects_cross_graph_edges() -> None:
     samples = [
         add_himnet_inputs(sample)
@@ -838,3 +1009,179 @@ def test_three_d_infomax_prediction_ignores_pos_only_changes() -> None:
     ).eval()
     with torch.no_grad():
         assert torch.equal(model(baseline_batch), model(shifted_batch))
+
+
+# --- MGCN (AAAI 2019) -------------------------------------------------------
+
+
+def _mgcn_samples(*smiles: str) -> list[MolecularData]:
+    return [
+        add_mgcn_inputs(
+            featurize_smiles(value, targets=[0.5], target_mask=[True], sample_id=index)
+        )
+        for index, value in enumerate(smiles)
+    ]
+
+
+def _mgcn_model(num_targets: int = 1) -> MGCN:
+    return MGCN(
+        num_targets=num_targets,
+        hidden_dim=8,
+        num_layers=1,
+        readout_hidden_dim=8,
+    )
+
+
+def test_mgcn_transform_builds_complete_reciprocal_directed_graph() -> None:
+    sample = _mgcn_samples("CCO")[0]
+    node_count = int(sample.atomic_number.shape[0])
+    edge_index = sample.mgcn_edge_index
+    assert edge_index.shape == (2, node_count * (node_count - 1))
+    source, target = edge_index
+    assert int((source == target).sum()) == 0
+    # Every ordered pair appears exactly once in deterministic source-major order.
+    encoded = source * node_count + target
+    assert torch.unique(encoded).numel() == encoded.numel()
+    # Reciprocal pairs are present.
+    reverse = target * node_count + source
+    assert torch.isin(reverse, encoded).all()
+    # Canonical bond graph is left untouched.
+    assert torch.equal(sample.edge_index, featurize_smiles(
+        "CCO", targets=[0.5], target_mask=[True], sample_id=0
+    ).edge_index)
+
+
+def test_mgcn_batch_offsets_complete_graph_and_keeps_companions_separate() -> None:
+    samples = _mgcn_samples("CCO", "c1ccccc1", "C")
+    batch = Batch.from_data_list(list[BaseData](samples))
+    source = batch.mgcn_edge_index[0]
+    target = batch.mgcn_edge_index[1]
+    for graph_id, sample in enumerate(samples):
+        node_count = int(sample.atomic_number.shape[0])
+        mask = batch.batch[source] == graph_id
+        assert int(mask.sum()) == node_count * (node_count - 1)
+        start = int((batch.batch == graph_id).nonzero(as_tuple=False).min())
+        local_sources = source[mask] - start
+        local_targets = target[mask] - start
+        assert bool((local_sources >= 0).all())
+        assert bool((local_sources < node_count).all())
+        assert bool((local_targets >= 0).all())
+        assert bool((local_targets < node_count).all())
+
+
+def test_mgcn_rejects_cross_graph_complete_edges() -> None:
+    batch = Batch.from_data_list(list[BaseData](_mgcn_samples("CC", "CC")))
+    model = _mgcn_model()
+    assert model(batch).shape == (2, 1)
+
+    invalid = batch.clone()
+    invalid.mgcn_edge_index = batch.mgcn_edge_index.clone()
+    # First graph has two atoms (edges 0->1, 1->0); target index 3 is graph 1.
+    invalid.mgcn_edge_index[1, 0] = 3
+    with pytest.raises(
+        ValueError, match=r"mgcn_edge_index must not connect different graphs"
+    ):
+        model(invalid)
+
+
+def test_mgcn_rejects_incomplete_or_duplicated_complete_graph() -> None:
+    model = _mgcn_model()
+
+    duplicated = Batch.from_data_list(
+        list[BaseData](_mgcn_samples("CC"))
+    )
+    duplicated.mgcn_edge_index = torch.cat(
+        [duplicated.mgcn_edge_index, duplicated.mgcn_edge_index[:, :1]], dim=1
+    )
+    with pytest.raises(ValueError, match="must not contain duplicate edges"):
+        model(duplicated)
+
+    # A 3-atom graph with a reciprocal-but-incomplete edge subset must be
+    # rejected by the per-graph completeness check.
+    three = _mgcn_samples("CCN")[0]
+    incomplete = three.clone()
+    incomplete.mgcn_edge_index = torch.tensor(
+        [[0, 1, 1, 2], [1, 0, 2, 1]], dtype=torch.long
+    )
+    incomplete_batch = Batch.from_data_list([incomplete])
+    with pytest.raises(ValueError, match="complete directed graph"):
+        model(incomplete_batch)
+
+
+def test_mgcn_prediction_is_invariant_to_permutation_and_rigid_motions() -> None:
+    samples = _mgcn_samples("CCO", "c1ccccc1")
+    baseline_batch = Batch.from_data_list(list[BaseData](samples))
+    model = _mgcn_model().eval()
+    with torch.no_grad():
+        baseline = model(baseline_batch)
+
+    permutation = torch.tensor([2, 0, 1])
+    inverse = torch.empty_like(permutation)
+    inverse[permutation] = torch.arange(3)
+    permuted_pos = [sample.pos.clone() for sample in samples]
+    permuted_pos[0] = samples[0].pos[permutation]
+    permuted_edge = samples[0].mgcn_edge_index.clone()
+    permuted_edge = inverse[permuted_edge]
+    permuted = [sample.clone() for sample in samples]
+    permuted[0].pos = permuted_pos[0]
+    permuted[0].mgcn_edge_index = permuted_edge
+    permuted[0].atomic_number = samples[0].atomic_number[permutation]
+    permuted_batch = Batch.from_data_list(list[BaseData](permuted))
+    with torch.no_grad():
+        assert torch.allclose(model(permuted_batch), baseline, atol=1e-5)
+
+    rotation = torch.tensor([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+    reflection = torch.diag(torch.tensor([1.0, 1.0, -1.0]))
+    moved = [sample.clone() for sample in samples]
+    for sample in moved:
+        sample.pos = sample.pos @ rotation.T + 5.0
+    moved_batch = Batch.from_data_list(list[BaseData](moved))
+    with torch.no_grad():
+        assert torch.allclose(model(moved_batch), baseline, atol=1e-5)
+
+    reflected = [sample.clone() for sample in samples]
+    for sample in reflected:
+        sample.pos = sample.pos @ reflection.T
+    reflected_batch = Batch.from_data_list(list[BaseData](reflected))
+    with torch.no_grad():
+        assert torch.allclose(model(reflected_batch), baseline, atol=1e-5)
+
+
+def test_mgcn_trains_masked_multitask_loss_and_steps() -> None:
+    smiles = ("CCO", "c1ccccc1", "C")
+    samples = []
+    for index, value in enumerate(smiles):
+        targets = torch.tensor([0.5 + index, -1.0, 2.0])
+        mask = torch.tensor([True, index != 1, False])
+        sample = add_mgcn_inputs(
+            featurize_smiles(value, targets=targets, target_mask=mask, sample_id=index)
+        )
+        samples.append(sample)
+    batch = Batch.from_data_list(list[BaseData](samples))
+
+    model = _mgcn_model(num_targets=3)
+    prediction = model(batch)
+    assert prediction.shape == (3, 3)
+    observed = batch.y_mask
+    loss = ((prediction - batch.y).square() * observed).sum() / observed.sum()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer.zero_grad(set_to_none=True)
+    loss.backward()
+    gradients = [p.grad for p in model.parameters() if p.grad is not None]
+    assert gradients
+    assert all(bool(torch.isfinite(g).all()) for g in gradients)
+    optimizer.step()
+
+
+def test_mgcn_single_atom_graph_with_empty_edges_stays_trainable() -> None:
+    sample = _mgcn_samples("C")[0]
+    assert sample.mgcn_edge_index.shape[1] == 0
+    batch = Batch.from_data_list(list[BaseData]([sample]))
+    model = _mgcn_model()
+    prediction = model(batch)
+    assert prediction.shape == (1, 1)
+    assert bool(torch.isfinite(prediction).all())
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer.zero_grad(set_to_none=True)
+    prediction.sum().backward()
+    optimizer.step()

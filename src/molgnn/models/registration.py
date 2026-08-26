@@ -7,7 +7,9 @@ from .ampnn_emnn_2020.ampnn import AMPNN
 from .ampnn_emnn_2020.emnn import EMNN
 from .attentivefp_2020 import AttentiveFP
 from .chemrl_gem_2022 import ChemRLGEM
+from .dgt_2026 import DGT2026
 from .dimenet_2020 import DimeNet2020
+from .dimenet_pp_2020 import DimeNetPlusPlus2020
 from .dmpnn_2024 import DMPNN
 from .egnn_2021 import EGNN
 from .eqgat_2022 import EQGAT
@@ -25,17 +27,20 @@ from .himnet_2026 import HimNet
 from .hmgnn_2020 import HMGNN
 from .kpgt_2022 import KPGT
 from .mat_2020 import MAT
+from .mgcn_2019 import MGCN
 from .molclr_2022.model import MolCLRGCN, MolCLRGIN
 from .molebert_2023 import MoleBERT
 from .molecular_graph_embedding_2017 import MolecularGraphEmbedding
 from .mpnn_2017 import MPNN, MPNNDistanceBins3D
 from .mvgnn_2020 import MVGNNcross
 from .neural_fingerprint_2015 import NeuralFingerprint
-from .three_d_infomax_2022 import ThreeDInfomax
 from .painn_2021 import PaiNN
 from .potentialnet_2018 import PotentialNet
+from .pretrain_gnns_2020 import PretrainGNNs
 from .resgat_2024 import ResGAT
 from .schnet_2017 import SchNet
+from .spherenet_2022 import SphereNet2022
+from .three_d_infomax_2022 import ThreeDInfomax
 from .transformer_m_2023 import TransformerM
 from .trimnet_2020 import TrimNet2020
 from .visnet_2023 import ViSNet
@@ -101,6 +106,43 @@ def register_builtin_models() -> None:
             benchmark_enabled=False,
             benchmark_order=32,
         )(DimeNet2020)
+    if "dgt" not in available_models():
+        register_model(
+            "dgt",
+            required_batch_fields=DGT2026.required_batch_fields,
+            graph_transform_name="dgt_inputs",
+            transform_output_fields=(
+                "dgt_e2e_edge_index",
+                "dgt_e2e_node_index",
+                "dgt_e_batch",
+                "dgt_spd_index",
+                "dgt_spd_lengths",
+                "dgt_e2e_spd_index",
+                "dgt_e2e_spd_lengths",
+                "dgt_rwse",
+                "dgt_e2e_rwse",
+            ),
+            prediction_reducer_name="identity",
+            geometry_requirement="none",
+            geometry_role="none",
+            benchmark_enabled=False,
+            benchmark_order=43,
+        )(DGT2026)
+    if "dimenet_pp" not in available_models():
+        register_model(
+            "dimenet_pp",
+            required_batch_fields=DimeNetPlusPlus2020.required_batch_fields,
+            graph_transform_name="dimenet_inputs",
+            transform_output_fields=(
+                "dimenet_edge_index",
+                "dimenet_triplet_edge_index",
+            ),
+            geometry_requirement="required",
+            geometry_role="pure_3d",
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=42,
+        )(DimeNetPlusPlus2020)
     if "gemnet_t" not in available_models():
         register_model(
             "gemnet_t",
@@ -222,6 +264,22 @@ def register_builtin_models() -> None:
             benchmark_enabled=False,
             benchmark_order=37,
         )(PaiNN)
+    if "mgcn" not in available_models():
+        register_model(
+            "mgcn",
+            required_batch_fields=MGCN.required_batch_fields,
+            graph_transform_name="mgcn_inputs",
+            transform_output_fields=(
+                "atomic_number",
+                "pos",
+                "mgcn_edge_index",
+            ),
+            geometry_requirement="required",
+            geometry_role="pure_3d",
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=44,
+        )(MGCN)
     if "visnet" not in available_models():
         register_model(
             "visnet",
@@ -468,6 +526,22 @@ def register_builtin_models() -> None:
             prediction_reducer_name="identity",
             benchmark_order=77,
         )(EGNN)
+    if "spherenet" not in available_models():
+        register_model(
+            "spherenet",
+            required_batch_fields=SphereNet2022.required_batch_fields,
+            graph_transform_name="spherenet_inputs",
+            transform_output_fields=(
+                "spherenet_edge_index",
+                "spherenet_triplet_edge_index",
+                "spherenet_torsion_pair_index",
+            ),
+            geometry_requirement="required",
+            geometry_role="pure_3d",
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=90,
+        )(SphereNet2022)
     if "molclr_gin" not in available_models():
         register_model(
             "molclr_gin",
@@ -642,4 +716,31 @@ def register_builtin_models() -> None:
             benchmark_enabled=False,
             benchmark_order=88,
         )(ThreeDInfomax)
+    if "pretrain_gnns" not in available_models():
+        register_model(
+            "pretrain_gnns",
+            default_parameters=dict(
+                num_layer=5,
+                emb_dim=300,
+                JK="last",
+                drop_ratio=0.0,
+                graph_pooling="mean",
+                pretrained_variant="none",
+                pretrained_checkpoint=None,
+            ),
+            required_batch_fields=PretrainGNNs.required_batch_fields,
+            graph_transform_name="pretrain_gnns_inputs",
+            transform_output_fields=(
+                "pretrain_gnns_atom_attr",
+                "pretrain_gnns_bond_attr",
+            ),
+            geometry_requirement="none",
+            geometry_role="none",
+            prediction_reducer_name="identity",
+            # The paper encoder is deliberately opt-in for the default
+            # all-model benchmark because its 300-wide, five-layer profile is
+            # materially larger than the lightweight smoke configuration.
+            benchmark_enabled=False,
+            benchmark_order=89,
+        )(PretrainGNNs)
 __all__ = ["register_builtin_models"]

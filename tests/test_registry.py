@@ -100,6 +100,74 @@ def test_builtin_registration_and_context_injection() -> None:
     assert dimenet_spec.prediction_reducer_name == "identity"
     assert dimenet_spec.benchmark_enabled is False
     assert dimenet_spec.benchmark_order == 32
+    dimenet_pp = build_model(
+        "dimenet_pp",
+        {
+            "hidden_dim": 8,
+            "interaction_dim": 4,
+            "basis_dim": 2,
+            "output_dim": 8,
+            "num_blocks": 1,
+            "num_spherical": 2,
+            "num_radial": 2,
+            "num_before_skip": 1,
+            "num_after_skip": 1,
+            "num_dense_output": 1,
+        },
+        BuildContext(atom_dim=153, bond_dim=14, num_targets=2),
+    )
+    dimenet_pp_spec = get_model_spec("dimenet_pp")
+    assert isinstance(dimenet_pp, nn.Module)
+    assert dimenet_pp_spec.required_batch_fields == (
+        "atomic_number",
+        "pos",
+        "dimenet_edge_index",
+        "dimenet_triplet_edge_index",
+        "batch",
+    )
+    assert dimenet_pp_spec.graph_transform_name == "dimenet_inputs"
+    assert dimenet_pp_spec.transform_output_fields == (
+        "dimenet_edge_index",
+        "dimenet_triplet_edge_index",
+    )
+    assert dimenet_pp_spec.prediction_reducer_name == "identity"
+    assert dimenet_pp_spec.geometry_requirement == "required"
+    assert dimenet_pp_spec.geometry_role == "pure_3d"
+    assert dimenet_pp_spec.benchmark_enabled is False
+    assert dimenet_pp_spec.benchmark_order == 42
+    dgt = build_model(
+        "dgt",
+        {
+            "dim_h": 16,
+            "num_heads": 4,
+            "num_layers": 2,
+            "dropout": 0.0,
+            "attn_dropout": 0.0,
+            "head_layers": 1,
+            "spd_max_length": 4,
+            "rwse_steps": 4,
+        },
+        BuildContext(atom_dim=153, bond_dim=14, num_targets=2),
+    )
+    dgt_spec = get_model_spec("dgt")
+    assert isinstance(dgt, nn.Module)
+    assert dgt_spec.graph_transform_name == "dgt_inputs"
+    assert dgt_spec.transform_output_fields == (
+        "dgt_e2e_edge_index",
+        "dgt_e2e_node_index",
+        "dgt_e_batch",
+        "dgt_spd_index",
+        "dgt_spd_lengths",
+        "dgt_e2e_spd_index",
+        "dgt_e2e_spd_lengths",
+        "dgt_rwse",
+        "dgt_e2e_rwse",
+    )
+    assert dgt_spec.prediction_reducer_name == "identity"
+    assert dgt_spec.geometry_requirement == "none"
+    assert dgt_spec.geometry_role == "none"
+    assert dgt_spec.benchmark_enabled is False
+    assert dgt_spec.benchmark_order == 43
     gpspp = build_model(
         "gpspp",
         {
@@ -327,12 +395,31 @@ def test_unknown_model_lists_available_models() -> None:
     register_builtin_models()
     with pytest.raises(
         RegistryError,
-        match="Available models: 3d_infomax, ampnn, attentivefp, chemrl_gem, dimenet, dmpnn, egnn, emnn, eqgat, equiformer, ewaldmp, fragnet, "
-        "gcn_baseline, gemnet_q, gemnet_t, gpspp, graphmvp, graphormer, grover, hignn, himnet, hmgnn, kpgt, mat, molclr_gcn, "
-        "molclr_gin, molebert, molecular_graph_embedding, mpnn, mpnn_3d_distance_bins, "
-        "mvgnn_cross, neural_fingerprint, painn, potentialnet, resgat, schnet, transformer_m, trimnet_2020, visnet, weave",
+match="Available models: 3d_infomax, ampnn, attentivefp, chemrl_gem, dgt, dimenet, dimenet_pp, dmpnn, egnn, emnn, eqgat, equiformer, ewaldmp, fragnet, "
+            "gcn_baseline, gemnet_q, gemnet_t, gpspp, graphmvp, graphormer, grover, hignn, himnet, hmgnn, kpgt, mat, mgcn, molclr_gcn, "
+            "molclr_gin, molebert, molecular_graph_embedding, mpnn, mpnn_3d_distance_bins, "
+            "mvgnn_cross, neural_fingerprint, painn, potentialnet, pretrain_gnns, resgat, schnet, spherenet, transformer_m, trimnet_2020, visnet, weave",
     ):
         build_model("missing", {}, BuildContext(1, 1, 1))
+
+
+def test_pretrain_gnns_registration_contract_and_factory() -> None:
+    register_builtin_models()
+    spec = get_model_spec("pretrain_gnns")
+    assert spec.graph_transform_name == "pretrain_gnns_inputs"
+    assert spec.transform_output_fields == (
+        "pretrain_gnns_atom_attr",
+        "pretrain_gnns_bond_attr",
+    )
+    assert spec.geometry_requirement == "none"
+    assert spec.geometry_role == "none"
+    assert spec.benchmark_enabled is False
+    model = build_model(
+        "pretrain_gnns",
+        {"num_layer": 2, "emb_dim": 8},
+        BuildContext(atom_dim=153, bond_dim=14, num_targets=2),
+    )
+    assert isinstance(model, nn.Module)
 
 
 def test_unknown_model_parameter_is_rejected() -> None:

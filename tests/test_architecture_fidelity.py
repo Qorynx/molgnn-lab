@@ -11,24 +11,13 @@ from torch_geometric.loader import DataLoader
 
 from molgnn.data import MolecularData
 from molgnn.featurizer import featurize_smiles
-from molgnn.models.dimenet_2020 import DimeNet2020
 from molgnn.models.chemrl_gem_2022 import ChemRLGEMEncoder
 from molgnn.models.chemrl_gem_2022.checkpoint import load_chemrl_gem_encoder
+from molgnn.models.dimenet_2020 import DimeNet2020
+from molgnn.models.dimenet_pp_2020 import DimeNetPlusPlus2020
 from molgnn.models.hignn_2023 import HiGNN
 from molgnn.models.himnet_2026 import HimNet
 from molgnn.models.kpgt_2022 import KPGT, KPGTVocab, LiGhTEncoder
-from molgnn.models.three_d_infomax_2022 import (
-    Net3D,
-    NTXentMultiplePositives,
-    ThreeDInfomax,
-    multi_positive_infomax_loss,
-)
-from molgnn.models.three_d_infomax_2022.checkpoint import (
-    CheckpointError as ThreeDInfomaxCheckpointError,
-    convert_official_checkpoint,
-    load_pretrained_encoder as load_three_d_infomax_encoder,
-)
-from molgnn.models.three_d_infomax_2022.layers import PNALayer
 from molgnn.models.kpgt_2022.checkpoint import (
     CheckpointError,
     infer_checkpoint_profile,
@@ -50,9 +39,31 @@ from molgnn.models.kpgt_2022.pretraining import (
 from molgnn.models.mpnn_2017 import MPNN, MPNNDistanceBins3D
 from molgnn.models.potentialnet_2018 import PotentialNet
 from molgnn.models.registration import register_builtin_models
+from molgnn.models.three_d_infomax_2022 import (
+    Net3D,
+    NTXentMultiplePositives,
+    ThreeDInfomax,
+    multi_positive_infomax_loss,
+)
+from molgnn.models.three_d_infomax_2022.checkpoint import (
+    CheckpointError as ThreeDInfomaxCheckpointError,
+)
+from molgnn.models.three_d_infomax_2022.checkpoint import (
+    convert_official_checkpoint,
+)
+from molgnn.models.three_d_infomax_2022.checkpoint import (
+    load_pretrained_encoder as load_three_d_infomax_encoder,
+)
+from molgnn.models.three_d_infomax_2022.layers import PNALayer
 from molgnn.models.weave_2016 import Weave
 from molgnn.registry import available_models, get_model_spec
-from molgnn.transforms import add_brics_fragments, add_himnet_inputs, add_kpgt_inputs
+from molgnn.transforms import (
+    add_brics_fragments,
+    add_dgt_inputs,
+    add_himnet_inputs,
+    add_kpgt_inputs,
+)
+from molgnn.transforms.dgt import pairwise_random_walk_landing_probs
 
 
 def test_chemrl_gem_encoder_has_official_tensor_schema() -> None:
@@ -91,7 +102,9 @@ def test_builtin_models_expose_runtime_input_contracts() -> None:
         "ampnn",
         "gcn_baseline",
         "attentivefp",
+        "dgt",
         "dimenet",
+        "dimenet_pp",
         "dmpnn",
         "emnn",
         "gpspp",
@@ -107,6 +120,7 @@ def test_builtin_models_expose_runtime_input_contracts() -> None:
         "weave",
         "egnn",
         "mat",
+        "mgcn",
         "molclr_gin",
         "molclr_gcn",
         "molebert",
@@ -333,6 +347,39 @@ def test_dimenet_keeps_directed_edge_states_and_independent_block_stacks() -> No
     assert len(model.output_blocks) == 3
     assert model.interaction_blocks[0] is not model.interaction_blocks[1]
     assert model.interaction_blocks[0].bilinear.shape == (8, 3, 8)
+    assert model.output_blocks[0].output_projection.bias is None
+
+
+def test_dimenet_pp_keeps_directed_edge_states_and_hadamard_blocks() -> None:
+    model = DimeNetPlusPlus2020(
+        hidden_dim=8,
+        interaction_dim=4,
+        basis_dim=2,
+        output_dim=8,
+        num_blocks=2,
+        num_spherical=2,
+        num_radial=2,
+        num_before_skip=1,
+        num_after_skip=1,
+        num_dense_output=1,
+        num_targets=1,
+    )
+
+    assert model.required_batch_fields == (
+        "atomic_number",
+        "pos",
+        "dimenet_edge_index",
+        "dimenet_triplet_edge_index",
+        "batch",
+    )
+    assert model.cutoff == 5.0
+    assert model.envelope_p == 6
+    assert len(model.interaction_blocks) == 2
+    assert len(model.output_blocks) == 3
+    assert model.interaction_blocks[0] is not model.interaction_blocks[1]
+    assert not hasattr(model.interaction_blocks[0], "bilinear")
+    assert model.interaction_blocks[0].down_projection.weight.shape == (4, 8)
+    assert model.interaction_blocks[0].up_projection.weight.shape == (8, 4)
     assert model.output_blocks[0].output_projection.bias is None
 
 
@@ -980,4 +1027,309 @@ def test_three_d_infomax_checkpoint_roundtrip_and_strict_loading(tmp_path) -> No
     assert torch.equal(
         fresh.node_gnn.mp_layers[0].pretrans.fully_connected[0].linear.weight,
         scratch.node_gnn.mp_layers[0].pretrans.fully_connected[0].linear.weight,
+    )
+
+
+# --- DGT / DimeNet++ / SphereNet post-review fixes (2026-08) ------------------
+
+
+def test_dgt_pairwise_rwse_matches_powers_of_transition_matrix() -> None:
+    """All-pairs RWSE must equal P^k[i, j], not diagonal-only endpoints."""
+
+    # Asymmetric one-way path 0 -> 1 -> 2: P is upper-triangular and its
+    # off-diagonal entries are exactly the quantities the old diagonal-only
+    # representation could never express.
+    edges = torch.tensor([[0, 1], [1, 2]])
+    flat = pairwise_random_walk_landing_probs(edges, num_nodes=3, steps=3)
+    blocks = flat.reshape(3, 3, 3)  # [i, j, k]
+    transition = torch.tensor(
+        [[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 0.0]]
+    )
+    assert torch.allclose(blocks[:, :, 0], transition)
+    two_step = transition @ transition
+    assert torch.allclose(blocks[:, :, 1], two_step)
+    # Off-diagonal element (0, 2) at k=2 exists only in the pairwise view.
+    assert abs(blocks[0, 2, 1].item() - 1.0) < 1e-6
+
+
+def test_dgt_pairwise_rwse_batching_keeps_graphs_separate() -> None:
+    samples = [
+        add_dgt_inputs(
+            featurize_smiles(value, targets=[0.0], target_mask=[True], sample_id=index)
+        )
+        for index, value in enumerate(("CCO", "C", "c1ccccc1"))
+    ]
+    batch = Batch.from_data_list(list[BaseData](samples))
+    counts = torch.bincount(batch.batch)
+    starts = torch.cumsum(counts.square(), dim=0) - counts.square()
+    for index, sample in enumerate(samples):
+        num_atoms = int(sample.x.shape[0])
+        start = int(starts[index])
+        block = batch.dgt_rwse[start : start + num_atoms**2]
+        assert torch.allclose(
+            block.reshape(num_atoms, num_atoms, -1),
+            sample.dgt_rwse.reshape(num_atoms, num_atoms, -1),
+        )
+
+
+def test_dgt_transform_preserves_isolated_highest_index_node() -> None:
+    """Disconnected SMILES must retain dense SPDE/RWSE dimensions."""
+
+    sample = add_dgt_inputs(
+        featurize_smiles("CC.O", targets=[0.0], target_mask=[True], sample_id=7)
+    )
+    assert sample.x.shape[0] == 3
+    assert sample.dgt_rwse.shape == (9, 16)
+    assert sample.dgt_spd_index.shape[0] == 2
+    # Atom 2 is isolated; its random-walk rows and columns remain present.
+    rwse = sample.dgt_rwse.reshape(3, 3, 16)
+    assert torch.allclose(rwse[2], torch.zeros_like(rwse[2]))
+    assert torch.allclose(rwse[:, 2], torch.zeros_like(rwse[:, 2]))
+
+
+def _dgt_tiny_model():
+    from molgnn.models.dgt_2026 import DGT2026
+
+    return DGT2026(
+        atom_dim=153,
+        bond_dim=14,
+        dim_h=8,
+        num_heads=4,
+        num_layers=1,
+        dropout=0.0,
+        attn_dropout=0.0,
+    )
+
+
+def test_dgt_train_mode_survives_single_atom_and_single_bond_streams() -> None:
+    model = _dgt_tiny_model()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+    def step(samples: list[MolecularData]) -> None:
+        batch = Batch.from_data_list(list[BaseData](samples))
+        prediction = model(batch)
+        assert prediction.shape == (len(samples), 1)
+        assert bool(torch.isfinite(prediction).all())
+        loss = prediction.square().mean()
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        gradients = [p.grad for p in model.parameters() if p.grad is not None]
+        assert gradients
+        assert all(bool(torch.isfinite(g).all()) for g in gradients)
+        optimizer.step()
+
+    # Single atom: atom stream has one row; bond stream is empty.
+    step([
+        add_dgt_inputs(
+            featurize_smiles("C", targets=[0.0], target_mask=[True], sample_id=0)
+        )
+    ])
+    # CO: one undirected bond -> bond stream has exactly one row.
+    step([
+        add_dgt_inputs(
+            featurize_smiles("CO", targets=[0.0], target_mask=[True], sample_id=1)
+        )
+    ])
+
+
+def test_dgt_attention_dropout_uses_one_shared_connection_mask() -> None:
+
+    from molgnn.models.dgt_2026.layers import DGTAttention
+
+    torch.manual_seed(123)
+    attention = DGTAttention(dim_h=4, num_heads=2, attn_dropout=0.5)
+    attention.train()
+    batch_size, num_nodes = 1, 3
+    h = torch.randn(batch_size, num_nodes, 4)
+    e_att = torch.randn(batch_size, num_nodes, num_nodes, 4)
+    e_val = torch.randn(batch_size, num_nodes, num_nodes, 4)
+    mask = torch.ones(batch_size, num_nodes, num_nodes, dtype=torch.bool)
+
+    torch.manual_seed(999)
+    got = attention(h, e_att, e_val, mask)
+
+    # Manual reference replicating OFFICIAL CODE dgt_layer.py semantics:
+    # dropout applies to the mask itself and broadcasts over head/feature
+    # channels, so one connection (i, j) shares a single dropout outcome.
+    query = attention.Q(h).view(batch_size, num_nodes, 2, 2)
+    key = attention.K(h).view(batch_size, num_nodes, 2, 2)
+    values = attention.V(h)
+    scaling = float(2) ** -0.5
+    scores = torch.einsum("bihk,bjhk->bijh", query, key * scaling).unsqueeze(-1)
+    mask_view = mask.view(batch_size, num_nodes, num_nodes, 1, 1)
+    scores = scores - 1e24 * (~mask_view)
+    scores = scores + e_att.view(batch_size, num_nodes, num_nodes, 2, 2)
+    scores = scores.reshape(batch_size, num_nodes, num_nodes, 4)
+    scores = torch.softmax(scores, dim=2)
+    # Re-seed so the manual replay draws the exact dropout mask consumed
+    # inside the module call above.
+    torch.manual_seed(999)
+    connection = attention.attn_dropout(mask_view.float()).squeeze(-1)
+    manual_scores = scores * connection
+    manual = torch.einsum("bijk,bjk->bik", manual_scores, values)
+    manual = manual + (manual_scores * e_val).sum(2)
+    manual = attention.out_proj(manual)
+    assert torch.allclose(got, manual, atol=1e-6)
+
+
+def test_dimenet_pp_rejects_cutoff_mismatched_with_transform() -> None:
+    from molgnn.models.dimenet_2020.constants import DIMENET_CUTOFF
+    from molgnn.models.dimenet_pp_2020 import DimeNetPlusPlus2020
+
+    kwargs = {
+        "hidden_dim": 8,
+        "interaction_dim": 8,
+        "basis_dim": 4,
+        "output_dim": 8,
+        "num_blocks": 1,
+    }
+    with pytest.raises(ValueError, match="DIMENET_CUTOFF"):
+        DimeNetPlusPlus2020(cutoff=DIMENET_CUTOFF + 1.5, **kwargs)
+    with pytest.raises(ValueError, match="DIMENET_CUTOFF"):
+        DimeNetPlusPlus2020(cutoff=4.0, **kwargs)
+    model = DimeNetPlusPlus2020(cutoff=DIMENET_CUTOFF, **kwargs)
+    assert model.cutoff == pytest.approx(DIMENET_CUTOFF)
+
+
+def test_spherenet_rejects_cutoff_mismatched_with_transform() -> None:
+    from molgnn.models.spherenet_2022 import SphereNet2022
+    from molgnn.models.spherenet_2022.constants import SPHERENET_CUTOFF
+
+    kwargs = {
+        "hidden_dim": 8,
+        "interaction_dim": 8,
+        "output_dim": 8,
+        "basis_dim_distance": 4,
+        "basis_dim_angle": 4,
+        "basis_dim_torsion": 4,
+        "num_blocks": 1,
+        "num_spherical": 2,
+        "num_radial": 4,
+    }
+    with pytest.raises(ValueError, match="SPHERENET_CUTOFF"):
+        SphereNet2022(cutoff=SPHERENET_CUTOFF + 1.0, **kwargs)
+    with pytest.raises(ValueError, match="SPHERENET_CUTOFF"):
+        SphereNet2022(cutoff=4.5, **kwargs)
+    model = SphereNet2022(cutoff=SPHERENET_CUTOFF, **kwargs)
+    assert model.cutoff == pytest.approx(SPHERENET_CUTOFF)
+
+
+# --- MGCN (AAAI 2019) -------------------------------------------------------
+
+
+def test_mgcn_registers_pure_3d_contract() -> None:
+    from molgnn.models.mgcn_2019 import MGCN
+
+    register_builtin_models()
+    spec = get_model_spec("mgcn")
+    assert spec.required_batch_fields == MGCN.required_batch_fields == (
+        "atomic_number",
+        "pos",
+        "mgcn_edge_index",
+        "batch",
+    )
+    assert spec.graph_transform_name == "mgcn_inputs"
+    assert spec.transform_output_fields == (
+        "atomic_number",
+        "pos",
+        "mgcn_edge_index",
+    )
+    assert spec.geometry_requirement == "required"
+    assert spec.geometry_role == "pure_3d"
+    assert spec.prediction_reducer_name == "identity"
+    assert spec.benchmark_enabled is False
+
+
+def test_mgcn_pair_embedding_is_symmetric_and_collision_free() -> None:
+    from molgnn.models.mgcn_2019.layers import PairEmbedding
+
+    embedding = PairEmbedding(hidden_dim=8, max_atomic_number=118)
+    pairs = torch.tensor(
+        [(6, 6), (6, 8), (8, 6), (1, 1), (1, 6), (6, 1), (8, 8), (7, 7)]
+    )
+    source = pairs[:, 0]
+    target = pairs[:, 1]
+    ids = PairEmbedding.pair_id(source, target)
+    # (6, 8) and (8, 6) share one id; no collisions within the range.
+    assert ids[1].item() == ids[2].item()
+    assert ids[4].item() == ids[5].item()
+    assert ids[1].item() != ids[3].item()
+    assert torch.unique(ids).numel() == 6
+
+    # Forward embeds directed pairs symmetrically.
+    assert torch.allclose(embedding(source, target), embedding(target, source))
+
+
+def test_mgcn_gaussian_rbf_peaks_at_centers() -> None:
+    from molgnn.models.mgcn_2019.layers import GaussianRBF
+
+    rbf = GaussianRBF(num_rbf=5, low=0.0, high=5.0, beta=1.0)
+    centers = rbf.centers
+    assert torch.allclose(centers, torch.tensor([0.0, 1.25, 2.5, 3.75, 5.0]))
+    values = rbf(centers)
+    assert torch.allclose(torch.diag(values), torch.ones(5))
+    assert bool(torch.isfinite(values).all())
+    assert bool((values <= 1.0).all())
+
+
+def test_mgcn_interaction_layers_are_unshared_and_concat_T_plus_1_levels() -> None:
+    from molgnn.models.mgcn_2019 import MGCN
+
+    model = MGCN(num_targets=2, hidden_dim=8, num_layers=2, readout_hidden_dim=8)
+    assert len(model.interactions) == 2
+    assert model.interactions[0] is not model.interactions[1]
+    # Readout consumes all T+1 concatenated levels.
+    assert model.readout[0].in_features == 3 * 8
+    assert model.readout[0].out_features == 8
+    assert model.readout[2].out_features == 2
+
+
+def test_mgcn_interaction_matches_paper_equations_on_tiny_graph() -> None:
+    """Manual reference for paper Eqs. (5)--(6) with eta=0.8 and the
+    old-edge/new-edge update timing: the message must consume the level-l
+    edge state, not the freshly produced level l+1 state."""
+    from molgnn.models.mgcn_2019.layers import InteractionLayer
+
+    torch.manual_seed(0)
+    layer = InteractionLayer(hidden_dim=1, rbf_dim=1, eta=0.8)
+    # Pin every weight to make the reference arithmetic exact.
+    with torch.no_grad():
+        layer.edge_update.weight.copy_(torch.tensor([[0.5]]))
+        layer.edge_update.bias.copy_(torch.tensor([-0.2]))
+        layer.atom_proj.weight.copy_(torch.tensor([[0.3]]))
+        layer.atom_proj.bias.copy_(torch.tensor([0.1]))
+        layer.dist_proj.weight.copy_(torch.tensor([[-0.4]]))
+        layer.dist_proj.bias.copy_(torch.tensor([0.2]))
+        layer.edge_proj.weight.copy_(torch.tensor([[0.6]]))
+        layer.edge_proj.bias.copy_(torch.tensor([0.05]))
+        layer.message_linear.weight.copy_(torch.tensor([[0.7]]))
+        layer.message_linear.bias.copy_(torch.tensor([0.15]))
+
+    atom = torch.tensor([[2.0], [3.0]])
+    edge = torch.tensor([[1.0], [4.0]])
+    rbf = torch.tensor([[0.5], [1.5]])
+    # Two-atom complete graph: (0->1) and (1->0).
+    edge_index = torch.tensor([[0, 1], [1, 0]])
+
+    atom_next, edge_next = layer(atom, edge, rbf, edge_index)
+
+    # Eq. (5): edge_next = eta * edge + (1 - eta) * W_ue(atom_s * atom_t)
+    expected_edge_01 = 0.8 * 1.0 + 0.2 * (0.5 * 2.0 * 3.0 - 0.2)
+    expected_edge_10 = 0.8 * 4.0 + 0.2 * (0.5 * 2.0 * 3.0 - 0.2)
+    assert torch.allclose(
+        edge_next, torch.tensor([[expected_edge_01], [expected_edge_10]]), atol=1e-6
+    )
+
+    # Eq. (6) uses the OLD edge (level l): for edge (0->1), source=0, target=1.
+    def reference_message(source_atom: float, dist: float, old_edge: float) -> float:
+        atom_feat = 0.3 * source_atom + 0.1
+        dist_feat = -0.4 * dist + 0.2
+        edge_feat = 0.6 * old_edge + 0.05
+        return math.tanh(0.7 * (atom_feat * dist_feat + edge_feat) + 0.15)
+
+    message_01 = reference_message(2.0, 0.5, 1.0)
+    message_10 = reference_message(3.0, 1.5, 4.0)
+    # Eq. (4): atom_next aggregates messages into the target.
+    assert torch.allclose(
+        atom_next, torch.tensor([[message_10], [message_01]]), atol=1e-6
     )

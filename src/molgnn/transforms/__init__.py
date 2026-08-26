@@ -5,8 +5,9 @@ from __future__ import annotations
 from .ampnn import add_ampnn_edge_types
 from .base import GraphTransform, TransformError
 from .brics import add_brics_fragments
-from .coley_2017 import add_coley_2017_features
 from .chemrl_gem import add_chemrl_gem_inputs
+from .coley_2017 import add_coley_2017_features
+from .dgt import add_dgt_inputs
 from .dimenet import add_dimenet_inputs
 from .directed_edges import add_reverse_edge_index
 from .egnn import add_egnn_inputs
@@ -22,13 +23,16 @@ from .himnet import add_himnet_inputs
 from .hmgnn import add_hmgnn_inputs
 from .kpgt import add_kpgt_inputs
 from .mat import add_mat_inputs
+from .mgcn import add_mgcn_inputs
 from .molebert import add_molebert_inputs
 from .mpnn import add_mpnn_3d_distance_bins_inputs, add_mpnn_edge_types
 from .neural_fingerprint import add_neural_fingerprint_inputs
-from .three_d_infomax import add_three_d_infomax_inputs
 from .painn import add_painn_inputs
 from .potentialnet import add_potentialnet_inputs
+from .pretrain_gnns import add_pretrain_gnns_inputs
 from .schnet import add_schnet_inputs
+from .spherenet import add_spherenet_inputs
+from .three_d_infomax import add_three_d_infomax_inputs
 from .transformer_m import add_transformer_m_inputs
 from .visnet import add_visnet_inputs
 from .weave import add_weave_inputs
@@ -64,6 +68,8 @@ def register_builtin_transforms() -> None:
         )
     if "dimenet_inputs" not in _TRANSFORMS:
         register_graph_transform("dimenet_inputs", add_dimenet_inputs)
+    if "dgt_inputs" not in _TRANSFORMS:
+        register_graph_transform("dgt_inputs", add_dgt_inputs)
     if "gemnet_t_inputs" not in _TRANSFORMS:
         register_graph_transform("gemnet_t_inputs", add_gemnet_t_inputs)
     if "gemnet_q_inputs" not in _TRANSFORMS:
@@ -102,6 +108,8 @@ def register_builtin_transforms() -> None:
         register_graph_transform("egnn_inputs", add_egnn_inputs)
     if "mat_inputs" not in _TRANSFORMS:
         register_graph_transform("mat_inputs", add_mat_inputs)
+    if "mgcn_inputs" not in _TRANSFORMS:
+        register_graph_transform("mgcn_inputs", add_mgcn_inputs)
     if "molebert_inputs" not in _TRANSFORMS:
         register_graph_transform("molebert_inputs", add_molebert_inputs)
     if "graphmvp_inputs" not in _TRANSFORMS:
@@ -118,6 +126,10 @@ def register_builtin_transforms() -> None:
         register_graph_transform(
             "three_d_infomax_inputs", add_three_d_infomax_inputs
         )
+    if "spherenet_inputs" not in _TRANSFORMS:
+        register_graph_transform("spherenet_inputs", add_spherenet_inputs)
+    if "pretrain_gnns_inputs" not in _TRANSFORMS:
+        register_graph_transform("pretrain_gnns_inputs", add_pretrain_gnns_inputs)
 def get_graph_transform(name: str | None) -> GraphTransform | None:
     """Resolve a transform name; ``None`` means the canonical graph unchanged."""
 
@@ -144,8 +156,9 @@ __all__ = [
     "TransformError",
     "add_ampnn_edge_types",
     "add_brics_fragments",
-    "add_coley_2017_features",
     "add_chemrl_gem_inputs",
+    "add_coley_2017_features",
+    "add_dgt_inputs",
     "add_dimenet_inputs",
     "add_egnn_inputs",
     "add_eqgat_inputs",
@@ -154,21 +167,24 @@ __all__ = [
     "add_gemnet_q_inputs",
     "add_gemnet_t_inputs",
     "add_gpspp_inputs",
-    "add_graphormer_inputs",
     "add_graphmvp_inputs",
+    "add_graphormer_inputs",
     "add_grover_inputs",
     "add_himnet_inputs",
     "add_hmgnn_inputs",
     "add_kpgt_inputs",
     "add_mat_inputs",
+    "add_mgcn_inputs",
     "add_molebert_inputs",
     "add_mpnn_3d_distance_bins_inputs",
     "add_mpnn_edge_types",
     "add_neural_fingerprint_inputs",
     "add_painn_inputs",
     "add_potentialnet_inputs",
+    "add_pretrain_gnns_inputs",
     "add_reverse_edge_index",
     "add_schnet_inputs",
+    "add_spherenet_inputs",
     "add_three_d_infomax_inputs",
     "add_transformer_m_inputs",
     "add_visnet_inputs",
