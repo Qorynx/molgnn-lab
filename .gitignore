@@ -21,6 +21,11 @@ tests/*
 !tests/test_geometry_pipeline.py
 uv.lock
 
+# Pretrain-GNNs is staged locally but intentionally absent from runtime/Git.
+/src/molgnn/models/pretrain_gnns_2020/
+/src/molgnn/transforms/pretrain_gnns.py
+/pretrained/pretrain_gnns_2020/
+
 # Local-only exhaustive compatibility matrix (never committed).
 /src/molgnn/moleculenet_smoke.py
 
