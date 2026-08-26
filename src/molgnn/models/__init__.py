@@ -36,6 +36,8 @@ if TYPE_CHECKING:
     from .hignn_2023 import NTNConv as NTNConv
     from .himnet_2026 import HimNet as HimNet
     from .himnet_2026 import HimNetData as HimNetData
+    from .himol_2023 import HiMol as HiMol
+    from .himol_2023 import HiMolPretrainer as HiMolPretrainer
     from .mat_2020 import MAT as MAT
     from .mgcn_2019 import MGCN as MGCN
     from .molclr_2022.model import MolCLRGCN as MolCLRGCN
@@ -88,6 +90,8 @@ _EXPORTS = {
     "HiGNNData": (".hignn_2023", "HiGNNData"),
     "HimNet": (".himnet_2026", "HimNet"),
     "HimNetData": (".himnet_2026", "HimNetData"),
+    "HiMol": (".himol_2023", "HiMol"),
+    "HiMolPretrainer": (".himol_2023", "HiMolPretrainer"),
     "MAT": (".mat_2020", "MAT"),
     "MGCN": (".mgcn_2019", "MGCN"),
     "MolCLRGCN": (".molclr_2022.model", "MolCLRGCN"),
@@ -157,6 +161,8 @@ __all__ = (
     "Graphormer",
     "HiGNN",
     "HiGNNData",
+    "HiMol",
+    "HiMolPretrainer",
     "HimNet",
     "HimNetData",
     "MPNNDistanceBins3D",

@@ -24,6 +24,7 @@ from .graphormer_2021 import Graphormer
 from .grover_2021 import GROVER
 from .hignn_2023 import HiGNN
 from .himnet_2026 import HimNet
+from .himol_2023 import HiMol
 from .hmgnn_2020 import HMGNN
 from .kpgt_2022 import KPGT
 from .mat_2020 import MAT
@@ -743,4 +744,24 @@ def register_builtin_models() -> None:
             benchmark_enabled=False,
             benchmark_order=89,
         )(PretrainGNNs)
+    if "himol" not in available_models():
+        register_model(
+            "himol",
+            default_parameters={
+                "num_layer": 5,
+                "emb_dim": 512,
+                "JK": "last",
+                "drop_ratio": 0.5,
+                "pretrained_variant": "none",
+                "pretrained_checkpoint": None,
+            },
+            required_batch_fields=HiMol.required_batch_fields,
+            graph_transform_name="himol_inputs",
+            transform_output_fields=HiMol.required_batch_fields,
+            geometry_requirement="none",
+            geometry_role="topology_2d",
+            prediction_reducer_name="identity",
+            benchmark_enabled=True,
+            benchmark_order=91,
+        )(HiMol)
 __all__ = ["register_builtin_models"]

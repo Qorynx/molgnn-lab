@@ -22,6 +22,7 @@ from molgnn.models.gcn_baseline import GCNBaseline
 from molgnn.models.graphmvp_2022 import GraphMVP
 from molgnn.models.hignn_2023 import HiGNN
 from molgnn.models.himnet_2026 import HimNet
+from molgnn.models.himol_2023 import HiMol, HiMolPretrainer
 from molgnn.models.kpgt_2022 import KPGT
 from molgnn.models.mgcn_2019 import MGCN
 from molgnn.models.molecular_graph_embedding_2017 import MolecularGraphEmbedding
@@ -41,6 +42,7 @@ from molgnn.transforms import (
     add_dimenet_inputs,
     add_graphmvp_inputs,
     add_himnet_inputs,
+    add_himol_inputs,
     add_kpgt_inputs,
     add_mgcn_inputs,
     add_mpnn_edge_types,
@@ -59,6 +61,92 @@ def _canonical_batch(*smiles: str) -> Batch:
         for index, value in enumerate(smiles)
     ]
     return Batch.from_data_list(list[BaseData](samples))
+
+
+def test_himol_hierarchy_batches_and_trains_without_touching_canonical_graph() -> None:
+    canonical = [
+        featurize_smiles(value, targets=[0.0, 1.0], target_mask=[True, True], sample_id=index)
+        for index, value in enumerate(("CC(=O)NCC", "c1ccccc1-c2ccccc2"))
+    ]
+    originals = [
+        (sample.x.clone(), sample.edge_index.clone(), sample.edge_attr.clone())
+        for sample in canonical
+    ]
+    samples = [add_himol_inputs(sample) for sample in canonical]
+    for sample, original in zip(samples, originals, strict=True):
+        assert torch.equal(sample.x, original[0])
+        assert torch.equal(sample.edge_index, original[1])
+        assert torch.equal(sample.edge_attr, original[2])
+        typed_edges = {
+            (int(source), int(target), int(edge_type))
+            for (source, target), edge_type in zip(
+                sample.himol_edge_index.t().tolist(),
+                sample.himol_edge_attr[:, 0].tolist(),
+                strict=True,
+            )
+        }
+        for source, target, edge_type in typed_edges:
+            if edge_type >= 5:
+                assert (target, source, edge_type) in typed_edges
+
+    batch = Batch.from_data_list(list[BaseData](samples))
+    assert batch.himol_graph_node_index.shape == (2,)
+    assert torch.equal(
+        batch.himol_batch[batch.himol_graph_node_index], torch.arange(2)
+    )
+    assert int(batch.himol_bond_index.max()) < int(batch.himol_num_atoms.sum())
+    model = HiMol(
+        atom_dim=153,
+        bond_dim=14,
+        num_targets=2,
+        num_layer=2,
+        emb_dim=8,
+        drop_ratio=0.0,
+    )
+    prediction = model(batch)
+    assert prediction.shape == (2, 2)
+    prediction.square().mean().backward()
+    assert model.gnn.x_embedding1.weight.grad is not None
+    model.eval()
+    batch.pos = torch.randn((batch.x.shape[0], 3))
+    without_position_change = model(batch)
+    batch.pos = torch.randn_like(batch.pos) * 100.0
+    with_position_change = model(batch)
+    assert torch.equal(without_position_change, with_position_change)
+
+
+def test_himol_msp_trains_no_bond_batch_and_round_trips_encoder(tmp_path) -> None:
+    samples = [
+        add_himol_inputs(
+            featurize_smiles(value, targets=[0.0], target_mask=[True], sample_id=index)
+        )
+        for index, value in enumerate(("C", "CCO"))
+    ]
+    batch = Batch.from_data_list(list[BaseData](samples))
+    pretrainer = HiMolPretrainer(
+        num_layer=2, emb_dim=8, drop_ratio=0.0, decoder_dropout=0.0
+    )
+    optimizer = torch.optim.Adam(pretrainer.parameters(), lr=1e-3)
+    optimizer.zero_grad(set_to_none=True)
+    losses = pretrainer.compute_loss(batch)
+    assert torch.isfinite(losses.total)
+    assert losses.weights.shape == (5,)
+    losses.total.backward()
+    assert pretrainer.loss_logits.grad is not None
+    optimizer.step()
+
+    checkpoint = pretrainer.save_encoder(tmp_path / "himol_encoder.pth")
+    predictor = HiMol(
+        atom_dim=153,
+        bond_dim=14,
+        num_targets=1,
+        num_layer=2,
+        emb_dim=8,
+        drop_ratio=0.0,
+        pretrained_checkpoint=str(checkpoint),
+    )
+    for key, value in pretrainer.gnn.state_dict().items():
+        assert torch.equal(value, predictor.gnn.state_dict()[key])
 
 
 def test_pretrain_gnns_transform_follows_arbitrary_edge_order() -> None:

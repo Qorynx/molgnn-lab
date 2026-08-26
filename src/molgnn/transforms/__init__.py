@@ -20,6 +20,7 @@ from .graphmvp import add_graphmvp_inputs
 from .graphormer import add_graphormer_inputs
 from .grover import add_grover_inputs
 from .himnet import add_himnet_inputs
+from .himol import HiMolData, add_himol_inputs
 from .hmgnn import add_hmgnn_inputs
 from .kpgt import add_kpgt_inputs
 from .mat import add_mat_inputs
@@ -96,6 +97,8 @@ def register_builtin_transforms() -> None:
         register_graph_transform("brics_fragments", add_brics_fragments)
     if "himnet_inputs" not in _TRANSFORMS:
         register_graph_transform("himnet_inputs", add_himnet_inputs)
+    if "himol_inputs" not in _TRANSFORMS:
+        register_graph_transform("himol_inputs", add_himol_inputs)
     if "fragnet_inputs" not in _TRANSFORMS:
         register_graph_transform("fragnet_inputs", add_fragnet_inputs)
     if "potentialnet_inputs" not in _TRANSFORMS:
@@ -153,6 +156,7 @@ def _name(value: str) -> str:
 
 __all__ = [
     "GraphTransform",
+    "HiMolData",
     "TransformError",
     "add_ampnn_edge_types",
     "add_brics_fragments",
@@ -171,6 +175,7 @@ __all__ = [
     "add_graphormer_inputs",
     "add_grover_inputs",
     "add_himnet_inputs",
+    "add_himol_inputs",
     "add_hmgnn_inputs",
     "add_kpgt_inputs",
     "add_mat_inputs",

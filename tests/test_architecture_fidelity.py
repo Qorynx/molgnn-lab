@@ -1214,6 +1214,28 @@ def test_spherenet_rejects_cutoff_mismatched_with_transform() -> None:
     assert model.cutoff == pytest.approx(SPHERENET_CUTOFF)
 
 
+# --- HiMol (Communications Chemistry 2023) ---------------------------------
+
+
+def test_himol_motif_decomposition_is_deterministic_and_refines_multi_ring_fragments() -> None:
+    from rdkit import Chem
+
+    from molgnn.transforms.himol import decompose_himol_motifs
+
+    biphenyl = Chem.MolFromSmiles("c1ccccc1-c2ccccc2")
+    assert decompose_himol_motifs(biphenyl) == (
+        (0, 1, 2, 3, 4, 5),
+        (6, 7, 8, 9, 10, 11),
+    )
+    fused_with_linker = Chem.MolFromSmiles("c1ccc2ccccc2c1CC(=O)NCC")
+    first = decompose_himol_motifs(fused_with_linker)
+    second = decompose_himol_motifs(fused_with_linker)
+    assert first == second
+    assert (0, 1, 2, 3, 8, 9) in first
+    assert (3, 4, 5, 6, 7, 8) in first
+    assert (10, 11, 12) in first
+
+
 # --- MGCN (AAAI 2019) -------------------------------------------------------
 
 

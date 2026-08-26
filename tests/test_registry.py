@@ -396,7 +396,7 @@ def test_unknown_model_lists_available_models() -> None:
     with pytest.raises(
         RegistryError,
 match="Available models: 3d_infomax, ampnn, attentivefp, chemrl_gem, dgt, dimenet, dimenet_pp, dmpnn, egnn, emnn, eqgat, equiformer, ewaldmp, fragnet, "
-            "gcn_baseline, gemnet_q, gemnet_t, gpspp, graphmvp, graphormer, grover, hignn, himnet, hmgnn, kpgt, mat, mgcn, molclr_gcn, "
+            "gcn_baseline, gemnet_q, gemnet_t, gpspp, graphmvp, graphormer, grover, hignn, himnet, himol, hmgnn, kpgt, mat, mgcn, molclr_gcn, "
             "molclr_gin, molebert, molecular_graph_embedding, mpnn, mpnn_3d_distance_bins, "
             "mvgnn_cross, neural_fingerprint, painn, potentialnet, pretrain_gnns, resgat, schnet, spherenet, transformer_m, trimnet_2020, visnet, weave",
     ):
@@ -417,6 +417,25 @@ def test_pretrain_gnns_registration_contract_and_factory() -> None:
     model = build_model(
         "pretrain_gnns",
         {"num_layer": 2, "emb_dim": 8},
+        BuildContext(atom_dim=153, bond_dim=14, num_targets=2),
+    )
+    assert isinstance(model, nn.Module)
+
+
+def test_himol_registration_contract_and_factory() -> None:
+    from molgnn.models.himol_2023 import HiMol
+
+    register_builtin_models()
+    spec = get_model_spec("himol")
+    assert spec.required_batch_fields == HiMol.required_batch_fields
+    assert spec.graph_transform_name == "himol_inputs"
+    assert spec.transform_output_fields == HiMol.required_batch_fields
+    assert spec.geometry_requirement == "none"
+    assert spec.geometry_role == "topology_2d"
+    assert spec.benchmark_enabled is True
+    model = build_model(
+        "himol",
+        {"num_layer": 2, "emb_dim": 8, "drop_ratio": 0.0},
         BuildContext(atom_dim=153, bond_dim=14, num_targets=2),
     )
     assert isinstance(model, nn.Module)
@@ -453,6 +472,7 @@ def test_benchmark_selection_uses_default_order_and_preserves_explicit_order() -
         "molebert",
         "graphmvp",
         "chemrl_gem",
+        "himol",
     )
     assert tuple(
         spec.name for spec in resolve_benchmark_models(("dmpnn", "gcn_baseline"))
