@@ -161,6 +161,14 @@ class MolecularData(Data):
             if isinstance(connection_features, Tensor):
                 return int(connection_features.shape[0])
             return 0
+        if key in {"kpgt_attention_edge_index", "kpgt_path_index"}:
+            indicator = getattr(self, "kpgt_node_indicator", None)
+            if not isinstance(indicator, Tensor):
+                raise ValueError(
+                    "MolecularData requires kpgt_node_indicator to batch "
+                    f"{key} over KPGT line-nodes"
+                )
+            return int(indicator.shape[0])
         return super().__inc__(key, value, *args, **kwargs)
 
     def __cat_dim__(self, key: str, value: Any, *args: Any, **kwargs: Any) -> Any:
@@ -172,6 +180,9 @@ class MolecularData(Data):
             "gemnet_reverse_edge_index",
             "gemnet_quadruplet_interaction_index",
         }:
+            return 0
+        if key == "kpgt_path_index":
+            # [A, path_length] rows are per-edge path records.
             return 0
         if key in {
             "dimenet_triplet_edge_index",

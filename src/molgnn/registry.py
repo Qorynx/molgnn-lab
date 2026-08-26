@@ -17,7 +17,9 @@ class RegistryError(ValueError):
 
 
 GeometryRequirement = Literal["none", "optional", "required"]
-GeometryRole = Literal["none", "pure_3d", "hybrid"]
+# ``topology_2d`` marks 2D-topology-only models whose runtime contract is
+# defined by a model-local transform (e.g. 3D Infomax's OGB view).
+GeometryRole = Literal["none", "pure_3d", "hybrid", "topology_2d"]
 
 
 @dataclass(frozen=True)
@@ -104,11 +106,13 @@ def register_model(
     prediction_reducer_name = _validate_name(prediction_reducer_name)
     if geometry_requirement not in {"none", "optional", "required"}:
         raise RegistryError("geometry_requirement must be none, optional, or required")
-    if geometry_role not in {"none", "pure_3d", "hybrid"}:
-        raise RegistryError("geometry_role must be none, pure_3d, or hybrid")
-    if geometry_requirement == "none" and geometry_role != "none":
+    if geometry_role not in {"none", "pure_3d", "hybrid", "topology_2d"}:
         raise RegistryError(
-            "geometry_role must be none when geometry_requirement is none"
+            "geometry_role must be none, pure_3d, hybrid, or topology_2d"
+        )
+    if geometry_requirement == "none" and geometry_role not in {"none", "topology_2d"}:
+        raise RegistryError(
+            "geometry_role must be none or topology_2d when geometry_requirement is none"
         )
     if geometry_requirement != "none" and geometry_role == "none":
         raise RegistryError(

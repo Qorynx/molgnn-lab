@@ -327,8 +327,8 @@ def test_unknown_model_lists_available_models() -> None:
     register_builtin_models()
     with pytest.raises(
         RegistryError,
-        match="Available models: ampnn, attentivefp, chemrl_gem, dimenet, dmpnn, egnn, emnn, eqgat, equiformer, ewaldmp, fragnet, "
-        "gcn_baseline, gemnet_q, gemnet_t, gpspp, graphmvp, graphormer, grover, hignn, himnet, hmgnn, mat, molclr_gcn, "
+        match="Available models: 3d_infomax, ampnn, attentivefp, chemrl_gem, dimenet, dmpnn, egnn, emnn, eqgat, equiformer, ewaldmp, fragnet, "
+        "gcn_baseline, gemnet_q, gemnet_t, gpspp, graphmvp, graphormer, grover, hignn, himnet, hmgnn, kpgt, mat, molclr_gcn, "
         "molclr_gin, molebert, molecular_graph_embedding, mpnn, mpnn_3d_distance_bins, "
         "mvgnn_cross, neural_fingerprint, painn, potentialnet, resgat, schnet, transformer_m, trimnet_2020, visnet, weave",
     ):

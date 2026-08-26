@@ -8,7 +8,7 @@ from torch_geometric.data import Batch
 from torch_geometric.data.data import BaseData
 
 from molgnn.data import MolecularData
-from molgnn.featurizer import featurize_smiles
+from molgnn.featurizer import featurize_mol, featurize_smiles
 from molgnn.models.ampnn_emnn_2020 import AMPNN, EMNN
 from molgnn.models.attentivefp_2020 import AttentiveFP
 from molgnn.models.chemrl_gem_2022 import ChemRLGEM, ChemRLGEMPretrainer
@@ -20,7 +20,9 @@ from molgnn.models.gcn_baseline import GCNBaseline
 from molgnn.models.graphmvp_2022 import GraphMVP
 from molgnn.models.hignn_2023 import HiGNN
 from molgnn.models.himnet_2026 import HimNet
+from molgnn.models.kpgt_2022 import KPGT
 from molgnn.models.molecular_graph_embedding_2017 import MolecularGraphEmbedding
+from molgnn.models.three_d_infomax_2022 import ThreeDInfomax
 from molgnn.models.mpnn_2017 import MPNN
 from molgnn.models.potentialnet_2018 import PotentialNet
 from molgnn.models.resgat_2024 import ResGAT
@@ -34,9 +36,11 @@ from molgnn.transforms import (
     add_dimenet_inputs,
     add_graphmvp_inputs,
     add_himnet_inputs,
+    add_kpgt_inputs,
     add_mpnn_edge_types,
     add_potentialnet_inputs,
     add_reverse_edge_index,
+    add_three_d_infomax_inputs,
     add_weave_inputs,
 )
 
@@ -567,3 +571,270 @@ def test_weave_rejects_cross_graph_ordered_pairs() -> None:
         ValueError, match=r"weave_pair_index must not connect different graphs"
     ):
         model(invalid)
+
+
+def _kpgt_samples(*smiles: str) -> list[MolecularData]:
+    return [
+        add_kpgt_inputs(
+            featurize_smiles(value, targets=[0.5], target_mask=[True], sample_id=index)
+        )
+        for index, value in enumerate(smiles)
+    ]
+
+
+def _kpgt_model(num_targets: int = 1, d_g_feats: int = 16) -> KPGT:
+    return KPGT(
+        num_targets=num_targets,
+        d_g_feats=d_g_feats,
+        d_hpath_ratio=4,
+        n_mol_layers=1,
+        path_length=5,
+        n_heads=4,
+        n_ffn_dense_layers=2,
+        attn_drop=0.0,
+        feat_drop=0.0,
+        predictor_hidden_dim=8,
+    )
+
+
+def test_kpgt_batches_line_nodes_paths_and_two_knowledge_nodes() -> None:
+    samples = _kpgt_samples("CCO", "C")
+    first_nodes = int(samples[0].kpgt_node_indicator.shape[0])
+    first_edges = int(samples[0].kpgt_attention_edge_index.shape[1])
+    batch = Batch.from_data_list(list[BaseData](samples))
+    total_nodes = int(batch.kpgt_node_indicator.shape[0])
+
+    # Attention edges are offset by line-node counts (not canonical atoms).
+    edge_index = batch.kpgt_attention_edge_index
+    assert int(edge_index.min()) >= 0 and int(edge_index.max()) < total_nodes
+
+    # Path rows concatenate along axis zero and keep negative sentinels.
+    paths_second = batch.kpgt_path_index[first_edges:]
+    valid = paths_second >= 0
+    raw = samples[1].kpgt_path_index
+    assert torch.equal(paths_second[valid], raw[raw >= 0] + first_nodes)
+    assert bool((paths_second[~valid] < -99).all())
+
+    # Exactly two knowledge nodes close each graph's node block.
+    second_block = batch.kpgt_node_indicator[first_nodes:]
+    assert second_block[-2:].tolist() == [1, 2]
+    assert torch.equal(
+        batch.kpgt_fingerprint, torch.cat([s.kpgt_fingerprint for s in samples])
+    )
+    assert batch.kpgt_token_count.tolist() == [
+        int(s.kpgt_token_count[0]) for s in samples
+    ]
+    assert batch.kpgt_triplet_label.dtype == torch.long
+
+
+def test_kpgt_trains_on_batched_zero_bond_and_disconnected_molecules() -> None:
+    batch = Batch.from_data_list(list[BaseData](_kpgt_samples("C", "C.Cl", "c1ccccc1")))
+    model = _kpgt_model()
+    prediction = model(batch)
+    assert prediction.shape == (3, 1)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer.zero_grad(set_to_none=True)
+    prediction.square().mean().backward()
+    optimizer.step()
+
+
+def test_kpgt_readout_concatenates_knowledge_and_mean_real_states() -> None:
+    batch = Batch.from_data_list(list[BaseData](_kpgt_samples("CCO", "C")))
+    model = _kpgt_model(d_g_feats=16)
+    model.eval()
+    model.predictor = torch.nn.Identity()
+
+    fields = model.validated_fields(batch)
+    indicators = fields["kpgt_node_indicator"]
+    token_count = fields["kpgt_token_count"]
+    total_nodes = int(indicators.shape[0])
+    node_graph_ids, real_mask = model.node_layout(token_count, total_nodes)
+    fp_nodes, md_nodes = model.project_knowledge(fields, node_graph_ids)
+    triplet_h = model.embed_triplet_states(fields, fp_nodes, md_nodes)
+    states = model.model(
+        triplet_h,
+        fields["kpgt_attention_edge_index"],
+        fields["kpgt_path_index"],
+        fields["kpgt_virtual_path"],
+        fields["kpgt_self_loop"],
+    )
+
+    with torch.no_grad():
+        features = model(batch)
+    fingerprint_state = states[indicators == 1]
+    descriptor_state = states[indicators == 2]
+    mean_real = torch.stack(
+        [
+            states[real_mask & (node_graph_ids == index)].mean(dim=0)
+            for index in range(2)
+        ]
+    )
+    assert features.shape == (2, 48)
+    assert torch.allclose(features[:, :16], fingerprint_state)
+    assert torch.allclose(features[:, 16:32], descriptor_state)
+    assert torch.allclose(features[:, 32:48], mean_real)
+
+
+def test_kpgt_prediction_is_invariant_to_pos_only_changes() -> None:
+    samples = _kpgt_samples("CCO", "c1ccccc1")
+    moved = [sample.clone() for sample in samples]
+    generator = torch.Generator().manual_seed(11)
+    for sample in moved:
+        count = int(sample.x.shape[0])
+        sample.pos = torch.rand((count, 3), generator=generator)
+
+    baseline_batch = Batch.from_data_list(list[BaseData](samples))
+    shifted_batch = Batch.from_data_list(list[BaseData](moved))
+    model = _kpgt_model().eval()
+    with torch.no_grad():
+        baseline = model(baseline_batch)
+        shifted = model(shifted_batch)
+    assert torch.equal(baseline, shifted)
+
+
+# --- 3D Infomax (ICML 2022) --------------------------------------------------
+
+
+def _infomax_samples(*smiles: str) -> list[MolecularData]:
+    return [
+        add_three_d_infomax_inputs(
+            featurize_smiles(value, targets=[0.0], target_mask=[True], sample_id=index)
+        )
+        for index, value in enumerate(smiles)
+    ]
+
+
+def test_three_d_infomax_transform_builds_model_local_categorical_view() -> None:
+    sample = _infomax_samples("CCO", "C")[1]
+    assert sample.three_d_infomax_atom_attr.shape == (1, 9)
+    assert sample.three_d_infomax_bond_attr.shape == (0, 3)
+    assert sample.three_d_infomax_atom_attr.dtype == torch.long
+
+    batch = Batch.from_data_list(list[BaseData](_infomax_samples("CCO", "C")))
+    model = ThreeDInfomax(
+        num_targets=3,
+        hidden_dim=16,
+        propagation_depth=2,
+        mid_batch_norm=False,
+        last_batch_norm=False,
+        readout_batchnorm=False,
+        readout_hidden_dim=8,
+    ).eval()
+    with torch.no_grad():
+        prediction = model(batch)
+    assert prediction.shape == (2, 3)
+
+
+def test_three_d_infomax_remaps_canonical_bond_stereo_to_ogb_order() -> None:
+    from molgnn.transforms.ogb_categorical import categorical_bond_attrs_from_canonical
+
+    sample = MolecularData(edge_attr=torch.zeros((7, 14)))
+    sample.edge_attr[:, 0] = 1.0
+    sample.edge_attr[torch.arange(7), 7 + torch.arange(7)] = 1.0
+    bond_attr = categorical_bond_attrs_from_canonical(sample)
+    assert bond_attr[:, 1].tolist() == [0, 5, 1, 2, 3, 4, 5]
+
+
+def test_three_d_infomax_repeats_lowest_energy_conformer() -> None:
+    from molgnn.models.three_d_infomax_2022.pretraining import (
+        build_paired_conformer_batch,
+    )
+
+    samples = _infomax_samples("C", "N")
+    conformers = [
+        torch.tensor([[[0.0, 0.0, 0.0]], [[1.0, 1.0, 1.0]]]),
+        torch.tensor([[[2.0, 2.0, 2.0]], [[3.0, 3.0, 3.0]]]),
+    ]
+    paired = build_paired_conformer_batch(samples, conformers, num_conformers=3)
+    assert paired.positions[:, 0].tolist() == [0.0, 1.0, 0.0, 2.0, 3.0, 2.0]
+
+
+def test_three_d_infomax_message_direction_is_source_to_target() -> None:
+    # Molecular canonical graphs carry both directions, so prove direction at
+    # the layer level with an asymmetric directed chain 0 -> 1 -> 2.
+    from molgnn.models.three_d_infomax_2022.layers import PNALayer
+
+    torch.manual_seed(5)
+    layer = PNALayer(
+        in_dim=8,
+        out_dim=8,
+        in_dim_edges=8,
+        aggregators=["mean", "max", "min", "std"],
+        scalers=["identity", "amplification", "attenuation"],
+        pretrans_layers=2,
+        posttrans_layers=1,
+    )
+    layer.eval()
+    forward_chain = torch.tensor([[0, 1], [1, 2]])
+    backward_chain = forward_chain.flip(0)
+
+    with torch.no_grad():
+        forward_states = layer(
+            torch.tanh(torch.randn(3, 8)),
+            forward_chain,
+            torch.tanh(torch.randn(2, 8)),
+        )
+        reversed_states = layer(
+            torch.tanh(torch.randn(3, 8)),
+            backward_chain,
+            torch.tanh(torch.randn(2, 8)),
+        )
+    assert not torch.allclose(forward_states, reversed_states)
+
+
+def test_three_d_infomax_trains_masked_multitask_loss_and_steps() -> None:
+    smiles = ("CCO", "c1ccccc1", "C")
+    samples = []
+    for index, value in enumerate(smiles):
+        targets = torch.tensor([0.5 + index, -1.0, 2.0])
+        mask = torch.tensor([True, index != 1, False])
+        sample = add_three_d_infomax_inputs(
+            featurize_smiles(value, targets=targets, target_mask=mask, sample_id=index)
+        )
+        samples.append(sample)
+    batch = Batch.from_data_list(list[BaseData](samples))
+
+    model = ThreeDInfomax(
+        num_targets=3,
+        hidden_dim=16,
+        propagation_depth=2,
+        mid_batch_norm=False,
+        last_batch_norm=False,
+        readout_batchnorm=False,
+        readout_hidden_dim=8,
+    )
+    prediction = model(batch)
+    assert prediction.shape == (3, 3)
+    observed = batch.y_mask
+    loss = ((prediction - batch.y).square() * observed).sum() / observed.sum()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer.zero_grad(set_to_none=True)
+    loss.backward()
+    gradients_before_step = [
+        parameter.grad.abs().sum().item()
+        for parameter in model.parameters()
+        if parameter.grad is not None
+    ]
+    assert gradients_before_step and max(gradients_before_step) > 0.0
+    optimizer.step()
+
+
+def test_three_d_infomax_prediction_ignores_pos_only_changes() -> None:
+    samples = _infomax_samples("CCO", "c1ccccc1")
+    moved = [sample.clone() for sample in samples]
+    generator = torch.Generator().manual_seed(13)
+    for sample in moved:
+        sample.pos = torch.rand((int(sample.x.shape[0]), 3), generator=generator)
+
+    baseline_batch = Batch.from_data_list(list[BaseData](samples))
+    shifted_batch = Batch.from_data_list(list[BaseData](moved))
+    model = ThreeDInfomax(
+        num_targets=1,
+        hidden_dim=16,
+        propagation_depth=2,
+        mid_batch_norm=False,
+        last_batch_norm=False,
+        readout_batchnorm=False,
+    ).eval()
+    with torch.no_grad():
+        assert torch.equal(model(baseline_batch), model(shifted_batch))

@@ -20,10 +20,12 @@ from .graphormer import add_graphormer_inputs
 from .grover import add_grover_inputs
 from .himnet import add_himnet_inputs
 from .hmgnn import add_hmgnn_inputs
+from .kpgt import add_kpgt_inputs
 from .mat import add_mat_inputs
 from .molebert import add_molebert_inputs
 from .mpnn import add_mpnn_3d_distance_bins_inputs, add_mpnn_edge_types
 from .neural_fingerprint import add_neural_fingerprint_inputs
+from .three_d_infomax import add_three_d_infomax_inputs
 from .painn import add_painn_inputs
 from .potentialnet import add_potentialnet_inputs
 from .schnet import add_schnet_inputs
@@ -110,8 +112,12 @@ def register_builtin_transforms() -> None:
         register_graph_transform(
             "neural_fingerprint_inputs", add_neural_fingerprint_inputs
         )
-
-
+    if "kpgt_inputs" not in _TRANSFORMS:
+        register_graph_transform("kpgt_inputs", add_kpgt_inputs)
+    if "three_d_infomax_inputs" not in _TRANSFORMS:
+        register_graph_transform(
+            "three_d_infomax_inputs", add_three_d_infomax_inputs
+        )
 def get_graph_transform(name: str | None) -> GraphTransform | None:
     """Resolve a transform name; ``None`` means the canonical graph unchanged."""
 
@@ -153,6 +159,7 @@ __all__ = [
     "add_grover_inputs",
     "add_himnet_inputs",
     "add_hmgnn_inputs",
+    "add_kpgt_inputs",
     "add_mat_inputs",
     "add_molebert_inputs",
     "add_mpnn_3d_distance_bins_inputs",
@@ -162,6 +169,7 @@ __all__ = [
     "add_potentialnet_inputs",
     "add_reverse_edge_index",
     "add_schnet_inputs",
+    "add_three_d_infomax_inputs",
     "add_transformer_m_inputs",
     "add_visnet_inputs",
     "add_weave_inputs",

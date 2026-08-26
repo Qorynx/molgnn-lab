@@ -23,6 +23,7 @@ from .grover_2021 import GROVER
 from .hignn_2023 import HiGNN
 from .himnet_2026 import HimNet
 from .hmgnn_2020 import HMGNN
+from .kpgt_2022 import KPGT
 from .mat_2020 import MAT
 from .molclr_2022.model import MolCLRGCN, MolCLRGIN
 from .molebert_2023 import MoleBERT
@@ -30,6 +31,7 @@ from .molecular_graph_embedding_2017 import MolecularGraphEmbedding
 from .mpnn_2017 import MPNN, MPNNDistanceBins3D
 from .mvgnn_2020 import MVGNNcross
 from .neural_fingerprint_2015 import NeuralFingerprint
+from .three_d_infomax_2022 import ThreeDInfomax
 from .painn_2021 import PaiNN
 from .potentialnet_2018 import PotentialNet
 from .resgat_2024 import ResGAT
@@ -566,6 +568,78 @@ def register_builtin_models() -> None:
             benchmark_enabled=True,
             benchmark_order=86,
         )(ChemRLGEM)
-
-
+    if "kpgt" not in available_models():
+        register_model(
+            "kpgt",
+            default_parameters=dict(
+                d_g_feats=768,
+                n_mol_layers=12,
+                path_length=5,
+                n_heads=12,
+                d_hpath_ratio=12,
+                n_ffn_dense_layers=2,
+                input_drop=0.0,
+                attn_drop=0.1,
+                feat_drop=0.1,
+                predictor_hidden_dim=256,
+                predictor_num_layers=2,
+                predictor_dropout=0.0,
+                pretrained_checkpoint=None,
+            ),
+            required_batch_fields=KPGT.required_batch_fields,
+            graph_transform_name="kpgt_inputs",
+            transform_output_fields=(
+                "kpgt_begin_end",
+                "kpgt_bond_attr",
+                "kpgt_node_indicator",
+                "kpgt_triplet_label",
+                "kpgt_attention_edge_index",
+                "kpgt_path_index",
+                "kpgt_virtual_path",
+                "kpgt_self_loop",
+                "kpgt_fingerprint",
+                "kpgt_descriptor",
+                "kpgt_token_count",
+            ),
+            geometry_requirement="none",
+            geometry_role="none",
+            prediction_reducer_name="identity",
+            # The paper profile is ~100M parameters; keep it out of the
+            # default all-model benchmark but always runnable explicitly.
+            benchmark_enabled=False,
+            benchmark_order=87,
+        )(KPGT)
+    if "3d_infomax" not in available_models():
+        register_model(
+            "3d_infomax",
+            default_parameters=dict(
+                hidden_dim=70,
+                propagation_depth=4,
+                aggregators=("mean", "max", "min", "std"),
+                scalers=("identity", "amplification", "attenuation"),
+                readout_aggregators=("min", "max", "mean"),
+                residual=True,
+                mid_batch_norm=True,
+                last_batch_norm=True,
+                batch_norm_momentum=0.1,
+                dropout=0.0,
+                posttrans_layers=1,
+                pretrans_layers=1,
+                readout_batchnorm=True,
+                readout_hidden_dim=None,
+                readout_layers=2,
+                pretrained_checkpoint=None,
+            ),
+            required_batch_fields=ThreeDInfomax.required_batch_fields,
+            graph_transform_name="three_d_infomax_inputs",
+            transform_output_fields=(
+                "three_d_infomax_atom_attr",
+                "three_d_infomax_bond_attr",
+            ),
+            geometry_requirement="none",
+            geometry_role="topology_2d",
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=88,
+        )(ThreeDInfomax)
 __all__ = ["register_builtin_models"]

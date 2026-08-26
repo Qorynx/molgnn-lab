@@ -1,0 +1,36 @@
+model: three_d_infomax_2022
+paper: "3D Infomax for better molecular property prediction (ICML 2022)"
+source_repository: "HannesStark/3DInfomax"
+source_checkout_revision: "5cd32629c690e119bcae8726acedefdb0aa037fc"
+download_url: "bundled with the official repository checkout"
+downloaded_at: "2026-08-26"
+original_artifact:
+  path: "best_checkpoint_35epochs.pt"
+  size_bytes: 60169633
+  sha256: "109587CA4C794F7E4CD2D8EB0E577C81BD794B531332970C6074ECF3B185BAAB"
+converted_artifact:
+  path: "pna_encoder_qmugs.pt"
+  tensor_count: 159
+  scope: "PNA encoder only (atom/bond encoders + propagation layers); Net3D, optimizer, scheduler and pretraining head removed"
+profile:
+  hidden_dim: 200
+  propagation_depth: 7
+  aggregators: [mean, max, min, std]
+  scalers: [identity, amplification, attenuation]
+  avg_d_log_hardcoded: 1.0
+  pretrain_target_dim: 256
+net3d_profile:
+  hidden_dim: 20
+  fourier_encodings: 4
+  propagation_depth: 1
+  reduce_func: mean
+  readout_aggregators: [min, max, mean]
+license: "UNKNOWN"
+license_notes: >-
+  Neither the official repository nor the run directory carries a LICENSE
+  file. Per internal project policy this blocks nothing locally, but no
+  external redistribution right is inferred.
+safety_notes: >-
+  Load the original artifact only through molgnn's allowlisted converter
+  (weights_only=True). Runtime code must consume the converted pure-tensor
+  encoder artifact exclusively.
