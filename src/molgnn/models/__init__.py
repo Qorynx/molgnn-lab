@@ -60,6 +60,7 @@ if TYPE_CHECKING:
     from .spherenet_2022 import SphereNet2022 as SphereNet2022
     from .transformer_m_2023 import TransformerM as TransformerM
     from .trimnet_2020 import TrimNet2020 as TrimNet2020
+    from .unimol_2023 import UniMol as UniMol
     from .weave_2016 import Weave as Weave
 
 _EXPORTS = {
@@ -118,6 +119,7 @@ _EXPORTS = {
     "SphereNet2022": (".spherenet_2022", "SphereNet2022"),
     "TransformerM": (".transformer_m_2023", "TransformerM"),
     "TrimNet2020": (".trimnet_2020", "TrimNet2020"),
+    "UniMol": (".unimol_2023", "UniMol"),
     "Weave": (".weave_2016", "Weave"),
     "register_builtin_models": (".registration", "register_builtin_models"),
 }
@@ -188,6 +190,7 @@ __all__ = (
     "SphereNet2022",
     "TransformerM",
     "TrimNet2020",
+    "UniMol",
     "Weave",
     "register_builtin_models",
 )

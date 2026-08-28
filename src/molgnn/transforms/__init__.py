@@ -37,6 +37,7 @@ from .schnet import add_schnet_inputs
 from .spherenet import add_spherenet_inputs
 from .three_d_infomax import add_three_d_infomax_inputs
 from .transformer_m import add_transformer_m_inputs
+from .unimol import add_unimol_inputs
 from .visnet import add_visnet_inputs
 from .weave import add_weave_inputs
 
@@ -107,6 +108,8 @@ def register_builtin_transforms() -> None:
         register_graph_transform("potentialnet_inputs", add_potentialnet_inputs)
     if "transformer_m_inputs" not in _TRANSFORMS:
         register_graph_transform("transformer_m_inputs", add_transformer_m_inputs)
+    if "unimol_inputs" not in _TRANSFORMS:
+        register_graph_transform("unimol_inputs", add_unimol_inputs)
     if "weave_inputs" not in _TRANSFORMS:
         register_graph_transform("weave_inputs", add_weave_inputs)
     if "egnn_inputs" not in _TRANSFORMS:
@@ -203,6 +206,7 @@ __all__ = [
     "add_spherenet_inputs",
     "add_three_d_infomax_inputs",
     "add_transformer_m_inputs",
+    "add_unimol_inputs",
     "add_visnet_inputs",
     "add_weave_inputs",
     "get_graph_transform",
