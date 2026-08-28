@@ -34,6 +34,16 @@ class GaussianLayer(nn.Module):
     per-edge-type affine ``mul`` / ``bias``.  Because the lab has no atom-type
     vocabulary, the edge-type axis collapses to a single value (1 edge type),
     so ``mul`` / ``bias`` are ``[1, 1]`` embeddings indexed at row 0.
+
+    .. note::
+
+       The collapse from ``n_edge_type=30*30=900`` (upstream) to
+       ``n_edge_type=1`` (lab) costs the pair repr one bit of information:
+       two bonds at the same distance with different chemistries (e.g. a
+       C–C single bond at 1.54 Å vs. a C–O bond at 1.43 Å) now produce
+       *identical* pair features.  This is the canonical-featurizer
+       substitution price and matches every other lab port that needs
+       3-D pair geometry without an atom-type vocabulary.
     """
 
     def __init__(self, K: int = 128) -> None:

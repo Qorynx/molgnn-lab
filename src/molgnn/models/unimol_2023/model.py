@@ -6,19 +6,32 @@
 3-D distances.  A ``[CLS]`` atom (prepended by ``add_unimol_inputs``) is
 read out at index 0 and fed to a dropout + Linear head producing raw logits.
 
-The backbone consumes only ``x``, ``pos``, and ``batch`` — it is a dense
-Transformer and never reads ``edge_index`` / ``edge_attr`` (those fields are
-still required so PyG batching works).  Pretraining heads (MaskLMHead,
-DistanceHead, coordinate recovery, masked atom prediction on 209 M PubChem
-conformers) are intentionally not ported per lab policy.
+Documented deviations from the original Uni-Mol (see the package-level
+docstring in ``unimol_2023/__init__.py`` for the full list):
+
+- **Pretraining is not ported.**  ``MaskLMHead``, ``DistanceHead``, and
+  the SE(3)-equivariant coordinate head that train on 209 M PubChem 3-D
+  conformers are intentionally absent.  What ships here is a
+  randomly-initialised dense Transformer with pair bias — by far the
+  largest deviation from the paper.
+- **Atom-type vocabulary is collapsed.**  The upstream 30-entry atom
+  embedding and 900-entry (30×30) pair-type embedding are replaced by
+  a continuous ``nn.Linear(153, embed_dim)`` and a single-edge-type
+  Gaussian.  See :class:`GaussianLayer` for the consequence.
+- **The backbone consumes only ``x``, ``pos``, and ``batch``** — a
+  dense Transformer that never reads ``edge_index`` / ``edge_attr``
+  (those fields are still required so PyG batching works).
+- **Head output convention** differs: ``bce_with_logits`` on
+  ``[N, num_targets]`` (lab) vs. cross-entropy on ``[N, 2]`` with a
+  tanh-pooler (upstream).  Same semantics, different loss contract.
 
 .. warning::
 
-   BACE / BBBP-class downstream numbers are a lower bound on Uni-Mol's true
-   capability because we synthesise 3-D conformers via RDKit's ETKDG + MMFF,
-   whereas the paper trained on pre-computed PubChem 3-D conformers.
-   Numerical verification against the paper's equations is the right
-   correctness check.
+   BACE / BBBP-class downstream numbers are a lower bound on Uni-Mol's
+   true capability because we synthesise 3-D conformers via RDKit's
+   ETKDG + MMFF, whereas the paper trained on pre-computed PubChem 3-D
+   conformers.  Numerical verification against the paper's equations
+   is the right correctness check.
 """
 
 from __future__ import annotations
