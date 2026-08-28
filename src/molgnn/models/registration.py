@@ -34,6 +34,7 @@ from .molebert_2023 import MoleBERT
 from .molecular_graph_embedding_2017 import MolecularGraphEmbedding
 from .mpnn_2017 import MPNN, MPNNDistanceBins3D
 from .mvgnn_2020 import MVGNNcross
+from .mxmnet_2020 import MXMNet2020
 from .neural_fingerprint_2015 import NeuralFingerprint
 from .painn_2021 import PaiNN
 from .potentialnet_2018 import PotentialNet
@@ -281,6 +282,34 @@ def register_builtin_models() -> None:
             benchmark_enabled=False,
             benchmark_order=44,
         )(MGCN)
+    if "mxmnet" not in available_models():
+        register_model(
+            "mxmnet",
+            default_parameters={
+                "hidden_dim": 128,
+                "num_layers": 6,
+                "num_radial": 16,
+                "num_spherical": 7,
+                "spherical_num_radial": 6,
+                "envelope_exponent": 5,
+                "max_atomic_number": 118,
+            },
+            required_batch_fields=MXMNet2020.required_batch_fields,
+            graph_transform_name="mxmnet_inputs",
+            transform_output_fields=(
+                "atomic_number",
+                "pos",
+                "mxmnet_local_edge_index",
+                "mxmnet_global_edge_index",
+                "mxmnet_two_hop_edge_index",
+                "mxmnet_one_hop_edge_index",
+            ),
+            geometry_requirement="required",
+            geometry_role="pure_3d",
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=43,
+        )(MXMNet2020)
     if "visnet" not in available_models():
         register_model(
             "visnet",

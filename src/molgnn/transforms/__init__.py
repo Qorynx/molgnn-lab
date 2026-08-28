@@ -27,6 +27,7 @@ from .mat import add_mat_inputs
 from .mgcn import add_mgcn_inputs
 from .molebert import add_molebert_inputs
 from .mpnn import add_mpnn_3d_distance_bins_inputs, add_mpnn_edge_types
+from .mxmnet import MXMNetData, add_mxmnet_inputs
 from .neural_fingerprint import add_neural_fingerprint_inputs
 from .painn import add_painn_inputs
 from .potentialnet import add_potentialnet_inputs
@@ -113,6 +114,8 @@ def register_builtin_transforms() -> None:
         register_graph_transform("mat_inputs", add_mat_inputs)
     if "mgcn_inputs" not in _TRANSFORMS:
         register_graph_transform("mgcn_inputs", add_mgcn_inputs)
+    if "mxmnet_inputs" not in _TRANSFORMS:
+        register_graph_transform("mxmnet_inputs", add_mxmnet_inputs)
     if "molebert_inputs" not in _TRANSFORMS:
         register_graph_transform("molebert_inputs", add_molebert_inputs)
     if "graphmvp_inputs" not in _TRANSFORMS:
@@ -157,6 +160,7 @@ def _name(value: str) -> str:
 __all__ = [
     "GraphTransform",
     "HiMolData",
+    "MXMNetData",
     "TransformError",
     "add_ampnn_edge_types",
     "add_brics_fragments",
@@ -183,6 +187,7 @@ __all__ = [
     "add_molebert_inputs",
     "add_mpnn_3d_distance_bins_inputs",
     "add_mpnn_edge_types",
+    "add_mxmnet_inputs",
     "add_neural_fingerprint_inputs",
     "add_painn_inputs",
     "add_potentialnet_inputs",

@@ -34,6 +34,9 @@ equiformer = ["e3nn>=0.5.9,<0.6"]
 # SphereNet constructs the spherical-Bessel roots for its circular/torsion
 # bases at model construction time; forward passes remain pure PyTorch.
 spherenet = ["scipy>=1.14,<2"]
+# MXMNet constructs its fixed spherical-Bessel roots once; forward passes are
+# pure PyTorch and require no SciPy calls.
+mxmnet = ["scipy>=1.14,<2"]
 
 [project.scripts]
 molgnn = "molgnn.cli:main"

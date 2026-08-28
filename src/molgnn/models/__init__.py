@@ -49,6 +49,7 @@ if TYPE_CHECKING:
     )
     from .mpnn_2017 import MPNN as MPNN
     from .mpnn_2017 import MPNNDistanceBins3D as MPNNDistanceBins3D
+    from .mxmnet_2020 import MXMNet2020 as MXMNet2020
     from .neural_fingerprint_2015 import NeuralFingerprint as NeuralFingerprint
     from .potentialnet_2018 import PotentialNet as PotentialNet
     from .pretrain_gnns_2020 import PretrainGNNs as PretrainGNNs
@@ -103,6 +104,7 @@ _EXPORTS = {
     ),
     "MPNN": (".mpnn_2017", "MPNN"),
     "MPNNDistanceBins3D": (".mpnn_2017", "MPNNDistanceBins3D"),
+    "MXMNet2020": (".mxmnet_2020", "MXMNet2020"),
     "MVGNNcross": (".mvgnn_2020", "MVGNNcross"),
     "NTNConv": (".hignn_2023", "NTNConv"),
     "NeuralFingerprint": (".neural_fingerprint_2015", "NeuralFingerprint"),
@@ -167,6 +169,7 @@ __all__ = (
     "HimNetData",
     "MPNNDistanceBins3D",
     "MVGNNcross",
+    "MXMNet2020",
     "MolCLRGCN",
     "MolCLRGIN",
     "MoleBERT",
