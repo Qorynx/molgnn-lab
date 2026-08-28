@@ -1,0 +1,39 @@
+model: pvd_torchmd_et
+paper: "Pre-training via Denoising for Molecular Property Prediction (ICLR 2023)"
+variant: pcqm4mv2
+source:
+  repository: https://github.com/shehzaidi/pre-training-via-denoising
+  commit: 2d81667c4daf519a1bfd33f1e1257eefa527db61
+  license: MIT
+legacy_artifact:
+  filename: denoised-pcqm4mv2.ckpt
+  sha256: f6b387ba3632e03d273939257969161b2615a7fbf41e9f514fd25e1b5d345e66
+converted_artifact:
+  filename: denoised-pcqm4mv2.weights.pt
+  sha256: 76ca33bc4e784d8f4e74f454fef0562d1d68433d7b3d02bbb53938771207aa5d
+  format_version: 1
+  tensor_count: 147
+  global_step: 400000
+  retained:
+    - encoder
+    - noise_head
+    - position_normalizer
+  removed:
+    - optimizer_state
+    - lightning_callbacks
+    - scalar_property_head
+profile:
+  backbone: equivariant-transformer
+  hidden_channels: 256
+  num_layers: 8
+  num_heads: 8
+  num_rbf: 64
+  rbf_type: expnorm
+  trainable_rbf: false
+  cutoff_upper: 5.0
+  max_num_neighbors: 32
+  max_z: 100
+  distance_influence: both
+  vector_layer_norm: whitened
+  noise_scale: 0.04
+  noise_centering: source_raw

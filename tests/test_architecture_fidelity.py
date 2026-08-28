@@ -116,6 +116,7 @@ def test_builtin_models_expose_runtime_input_contracts() -> None:
         "mpnn_3d_distance_bins",
         "mvgnn_cross",
         "potentialnet",
+        "pvd_torchmd_et",
         "trimnet_2020",
         "weave",
         "egnn",
@@ -1355,3 +1356,252 @@ def test_mgcn_interaction_matches_paper_equations_on_tiny_graph() -> None:
     assert torch.allclose(
         atom_next, torch.tensor([[message_10], [message_01]]), atol=1e-6
     )
+
+
+# --- Pre-training via denoising / official TorchMD-ET ----------------------
+
+
+def _pvd_sample(atomic_number: torch.Tensor, pos: torch.Tensor, sample_id: int):
+    from molgnn.transforms import add_pvd_inputs
+
+    node_count = atomic_number.shape[0]
+    canonical = MolecularData(
+        x=torch.zeros((node_count, 1), dtype=torch.float32),
+        edge_index=torch.empty((2, 0), dtype=torch.long),
+        edge_attr=torch.empty((0, 1), dtype=torch.float32),
+        y=torch.tensor([float(sample_id)]),
+        y_mask=torch.tensor([True]),
+        sample_id=torch.tensor([sample_id]),
+        smiles="",
+        atomic_number=atomic_number,
+        pos=pos,
+    )
+    return add_pvd_inputs(canonical)
+
+
+def test_pvd_radius_graph_keeps_source_self_loops_cap_and_batching() -> None:
+    from molgnn.models.pvd_2023.geometry import build_pvd_radius_graph
+
+    dense_pos = torch.zeros((40, 3), dtype=torch.float32)
+    dense_pos[:, 0] = torch.arange(40) * 1.0e-3
+    dense_edges = build_pvd_radius_graph(dense_pos, max_num_neighbors=32)
+    _, target = dense_edges
+    assert torch.equal(torch.bincount(target, minlength=40), torch.full((40,), 32))
+    assert torch.equal(
+        torch.sort(dense_edges[0, dense_edges[0] == dense_edges[1]]).values,
+        torch.arange(40),
+    )
+
+    samples = [
+        _pvd_sample(
+            torch.tensor([6, 8, 1]),
+            torch.tensor([[0.0, 0.0, 0.0], [1.2, 0.0, 0.0], [0.0, 1.1, 0.0]]),
+            0,
+        ),
+        _pvd_sample(
+            torch.tensor([7, 1]),
+            torch.tensor([[0.0, 0.0, 0.0], [1.0, 0.2, 0.0]]),
+            1,
+        ),
+    ]
+    batch = Batch.from_data_list(list[BaseData](samples))
+    source, target = batch.pvd_edge_index
+    assert torch.equal(batch.batch[source], batch.batch[target])
+    self_nodes = source[source == target]
+    assert torch.equal(torch.sort(self_nodes).values, torch.arange(5))
+
+
+def test_pvd_torchmd_et_matches_official_source_golden_and_symmetries() -> None:
+    from molgnn.models.pvd_2023 import PVDTorchMDET
+
+    torch.manual_seed(4)
+    sample = _pvd_sample(
+        torch.tensor([6, 8, 1, 7]),
+        torch.tensor(
+            [
+                [0.0, 0.0, 0.0],
+                [1.1, 0.2, 0.1],
+                [-0.4, 1.2, 0.3],
+                [0.3, -0.5, 1.4],
+            ]
+        ),
+        0,
+    )
+    batch = Batch.from_data_list(list[BaseData]([sample]))
+    model = PVDTorchMDET(
+        atom_dim=1,
+        bond_dim=1,
+        num_targets=2,
+        hidden_channels=8,
+        num_layers=2,
+        num_rbf=6,
+        num_heads=2,
+    ).eval()
+    with torch.no_grad():
+        prediction = model(batch)
+        noise_prediction = model.predict_noise(batch)
+    # Generated once against the supplied official source with identical
+    # state_dict and a shim only for its removed torch_cluster dependency.
+    assert torch.allclose(
+        prediction,
+        torch.tensor([[0.2532393932, -0.4312753081]]),
+        atol=1.0e-6,
+    )
+    assert torch.allclose(
+        noise_prediction.flatten()[:8],
+        torch.tensor(
+            [
+                -0.8378018737,
+                1.1172088385,
+                -0.0757732987,
+                2.4714024067,
+                -0.5568763018,
+                2.3193545341,
+                -0.0745793954,
+                0.4436298013,
+            ]
+        ),
+        atol=1.0e-6,
+    )
+
+    rotation = torch.tensor(
+        [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]
+    )
+    rotated = batch.clone()
+    rotated.pos = batch.pos @ rotation.T
+    translated = batch.clone()
+    translated.pos = batch.pos + torch.tensor([3.0, -2.0, 4.0])
+    with torch.no_grad():
+        rotated_scalar = model(rotated)
+        translated_scalar = model(translated)
+        rotated_vector = model.predict_noise(rotated)
+        translated_vector = model.predict_noise(translated)
+    # The source whitening norm uses a tiny anisotropic SVD regularizer, so
+    # rotation parity is approximate at ~1e-3 while translation is numerical.
+    assert torch.allclose(prediction, translated_scalar, atol=1.0e-6)
+    assert torch.allclose(noise_prediction, translated_vector, atol=1.0e-6)
+    assert torch.allclose(prediction, rotated_scalar, atol=3.0e-3)
+    assert torch.allclose(
+        noise_prediction @ rotation.T, rotated_vector, atol=4.0e-3
+    )
+
+
+def test_pvd_denoising_rebuilds_graph_centers_noise_and_optimizes() -> None:
+    from molgnn.models.pvd_2023 import PVDPretrainer, PVDTorchMDET
+    from molgnn.models.pvd_2023.denoising import corrupt_pvd_batch
+
+    crossing = _pvd_sample(
+        torch.tensor([6, 8]),
+        torch.tensor([[0.0, 0.0, 0.0], [4.9, 0.0, 0.0]]),
+        0,
+    )
+    crossing_batch = Batch.from_data_list(list[BaseData]([crossing]))
+    model = PVDTorchMDET(
+        atom_dim=1,
+        bond_dim=1,
+        num_targets=1,
+        hidden_channels=8,
+        num_layers=2,
+        num_rbf=6,
+        num_heads=2,
+    )
+    original_pos = crossing_batch.pos.clone()
+    original_edges = crossing_batch.pvd_edge_index.clone()
+    noisy_batch, _ = corrupt_pvd_batch(
+        crossing_batch,
+        model,
+        noise=torch.tensor([[0.0, 0.0, 0.0], [0.3, 0.0, 0.0]]),
+    )
+    assert original_edges.shape[1] == 4
+    assert noisy_batch.pvd_edge_index.shape[1] == 2
+    assert torch.equal(crossing_batch.pos, original_pos)
+    assert torch.equal(crossing_batch.pvd_edge_index, original_edges)
+
+    training_sample = _pvd_sample(
+        torch.tensor([6, 8, 1, 7]),
+        torch.tensor(
+            [[0.0, 0.0, 0.0], [1.1, 0.2, 0.1], [-0.4, 1.2, 0.3], [0.3, -0.5, 1.4]]
+        ),
+        0,
+    )
+    training_batch = Batch.from_data_list(list[BaseData]([training_sample]))
+    pretrainer = PVDPretrainer(model, centering="paper_centered")
+    optimizer = torch.optim.Adam(pretrainer.parameters(), lr=1.0e-3)
+    optimizer.zero_grad(set_to_none=True)
+    losses = pretrainer.compute_loss(
+        training_batch, generator=torch.Generator().manual_seed(17)
+    )
+    assert torch.allclose(losses.noise_target.mean(dim=0), torch.zeros(3), atol=1.0e-7)
+    assert losses.noise_prediction.shape == (4, 3)
+    assert torch.isfinite(losses.total)
+    losses.total.backward()
+    assert model.encoder.embedding.weight.grad is not None
+    assert model.noise_head.output_network[0].vec1_proj.weight.grad is not None
+    optimizer.step()
+
+
+def test_pvd_official_weight_only_checkpoint_loads_strictly() -> None:
+    from molgnn.models.pvd_2023 import PVDPretrainer, PVDTorchMDET
+    from molgnn.models.pvd_2023.checkpoint import DEFAULT_CHECKPOINT, load_pvd_pretrainer
+
+    model = PVDTorchMDET(atom_dim=1, bond_dim=1, num_targets=1)
+    pretrainer = PVDPretrainer(model)
+    info = load_pvd_pretrainer(pretrainer, DEFAULT_CHECKPOINT)
+    assert info["tensor_count"] == 147
+    assert info["global_step"] == 400000
+    assert torch.allclose(
+        pretrainer.position_normalizer.std,
+        torch.full((3,), 0.04),
+        atol=2.0e-6,
+    )
+
+
+def test_pvd_native_qm9_schema_supports_supervised_and_denoising_steps() -> None:
+    from molgnn.models.pvd_2023 import PVDPretrainer, PVDTorchMDET
+
+    samples = [
+        _pvd_sample(
+            torch.tensor([6, 1, 1, 1, 1]),
+            torch.tensor(
+                [
+                    [0.0, 0.0, 0.0],
+                    [0.6, 0.6, 0.6],
+                    [-0.6, -0.6, 0.6],
+                    [-0.6, 0.6, -0.6],
+                    [0.6, -0.6, -0.6],
+                ]
+            ),
+            0,
+        ),
+        _pvd_sample(
+            torch.tensor([8, 1, 1]),
+            torch.tensor([[0.0, 0.0, 0.0], [0.8, 0.5, 0.0], [-0.8, 0.5, 0.0]]),
+            1,
+        ),
+    ]
+    for index, sample in enumerate(samples):
+        sample.y = torch.arange(12, dtype=torch.float32).reshape(1, 12) + index
+        sample.y_mask = torch.ones((1, 12), dtype=torch.bool)
+    batch = Batch.from_data_list(list[BaseData](samples))
+    model = PVDTorchMDET(
+        atom_dim=153,
+        bond_dim=14,
+        num_targets=12,
+        hidden_channels=8,
+        num_layers=2,
+        num_rbf=6,
+        num_heads=2,
+    )
+    prediction = model(batch)
+    assert prediction.shape == (2, 12)
+    supervised_loss = torch.nn.functional.mse_loss(prediction, batch.y)
+    supervised_loss.backward()
+    assert model.property_head.output_network[1].update_net[2].weight.grad is not None
+
+    model.zero_grad(set_to_none=True)
+    denoising = PVDPretrainer(model).compute_loss(
+        batch, generator=torch.Generator().manual_seed(23)
+    )
+    denoising.total.backward()
+    assert denoising.noise_prediction.shape == (8, 3)
+    assert model.noise_head.output_network[1].update_net[2].weight.grad is not None

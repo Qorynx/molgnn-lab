@@ -32,6 +32,7 @@ from .neural_fingerprint import add_neural_fingerprint_inputs
 from .painn import add_painn_inputs
 from .potentialnet import add_potentialnet_inputs
 from .pretrain_gnns import add_pretrain_gnns_inputs
+from .pvd import add_pvd_inputs
 from .schnet import add_schnet_inputs
 from .spherenet import add_spherenet_inputs
 from .three_d_infomax import add_three_d_infomax_inputs
@@ -136,6 +137,10 @@ def register_builtin_transforms() -> None:
         register_graph_transform("spherenet_inputs", add_spherenet_inputs)
     if "pretrain_gnns_inputs" not in _TRANSFORMS:
         register_graph_transform("pretrain_gnns_inputs", add_pretrain_gnns_inputs)
+    if "pvd_inputs" not in _TRANSFORMS:
+        register_graph_transform("pvd_inputs", add_pvd_inputs)
+
+
 def get_graph_transform(name: str | None) -> GraphTransform | None:
     """Resolve a transform name; ``None`` means the canonical graph unchanged."""
 
@@ -192,6 +197,7 @@ __all__ = [
     "add_painn_inputs",
     "add_potentialnet_inputs",
     "add_pretrain_gnns_inputs",
+    "add_pvd_inputs",
     "add_reverse_edge_index",
     "add_schnet_inputs",
     "add_spherenet_inputs",

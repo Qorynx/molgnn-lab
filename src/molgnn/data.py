@@ -56,6 +56,8 @@ class MolecularData(Data):
     schnet_geometry_is_proxy: Tensor
     painn_edge_index: Tensor
     painn_geometry_is_proxy: Tensor
+    pvd_edge_index: Tensor
+    pvd_geometry_is_proxy: Tensor
     gemnet_edge_index: Tensor
     gemnet_reverse_edge_index: Tensor
     gemnet_triplet_edge_index: Tensor

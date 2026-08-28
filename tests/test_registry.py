@@ -398,7 +398,7 @@ def test_unknown_model_lists_available_models() -> None:
         match="Available models: 3d_infomax, ampnn, attentivefp, chemrl_gem, dgt, dimenet, dimenet_pp, dmpnn, egnn, emnn, eqgat, equiformer, ewaldmp, fragnet, "
             "gcn_baseline, gemnet_q, gemnet_t, gpspp, graphmvp, graphormer, grover, hignn, himnet, himol, hmgnn, kpgt, mat, mgcn, molclr_gcn, "
             "molclr_gin, molebert, molecular_graph_embedding, mpnn, mpnn_3d_distance_bins, "
-            "mvgnn_cross, mxmnet, neural_fingerprint, painn, potentialnet, pretrain_gnns, resgat, schnet, spherenet, transformer_m, trimnet_2020, visnet, weave",
+                "mvgnn_cross, mxmnet, neural_fingerprint, painn, potentialnet, pretrain_gnns, pvd_torchmd_et, resgat, schnet, spherenet, transformer_m, trimnet_2020, visnet, weave",
     ):
         build_model("missing", {}, BuildContext(1, 1, 1))
 

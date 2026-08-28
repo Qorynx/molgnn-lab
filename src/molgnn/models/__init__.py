@@ -53,6 +53,8 @@ if TYPE_CHECKING:
     from .neural_fingerprint_2015 import NeuralFingerprint as NeuralFingerprint
     from .potentialnet_2018 import PotentialNet as PotentialNet
     from .pretrain_gnns_2020 import PretrainGNNs as PretrainGNNs
+    from .pvd_2023 import PVDPretrainer as PVDPretrainer
+    from .pvd_2023 import PVDTorchMDET as PVDTorchMDET
     from .registration import register_builtin_models as register_builtin_models
     from .resgat_2024 import ResGAT as ResGAT
     from .spherenet_2022 import SphereNet2022 as SphereNet2022
@@ -110,6 +112,8 @@ _EXPORTS = {
     "NeuralFingerprint": (".neural_fingerprint_2015", "NeuralFingerprint"),
     "PotentialNet": (".potentialnet_2018", "PotentialNet"),
     "PretrainGNNs": (".pretrain_gnns_2020", "PretrainGNNs"),
+    "PVDPretrainer": (".pvd_2023", "PVDPretrainer"),
+    "PVDTorchMDET": (".pvd_2023", "PVDTorchMDET"),
     "ResGAT": (".resgat_2024", "ResGAT"),
     "SphereNet2022": (".spherenet_2022", "SphereNet2022"),
     "TransformerM": (".transformer_m_2023", "TransformerM"),
@@ -178,6 +182,8 @@ __all__ = (
     "NeuralFingerprint",
     "PotentialNet",
     "PretrainGNNs",
+    "PVDPretrainer",
+    "PVDTorchMDET",
     "ResGAT",
     "SphereNet2022",
     "TransformerM",

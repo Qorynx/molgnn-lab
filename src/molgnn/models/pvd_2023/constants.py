@@ -1,0 +1,25 @@
+"""Official TorchMD-ET defaults released with pre-training via denoising."""
+
+from __future__ import annotations
+
+PVD_CUTOFF_LOWER = 0.0
+PVD_CUTOFF_UPPER = 5.0
+PVD_HIDDEN_CHANNELS = 256
+PVD_MAX_ATOMIC_NUMBER = 99
+PVD_MAX_NUM_NEIGHBORS = 32
+PVD_NUM_HEADS = 8
+PVD_NUM_LAYERS = 8
+PVD_NUM_RBF = 64
+PVD_PRETRAIN_NOISE_SCALE = 0.04
+
+__all__ = [
+    "PVD_CUTOFF_LOWER",
+    "PVD_CUTOFF_UPPER",
+    "PVD_HIDDEN_CHANNELS",
+    "PVD_MAX_ATOMIC_NUMBER",
+    "PVD_MAX_NUM_NEIGHBORS",
+    "PVD_NUM_HEADS",
+    "PVD_NUM_LAYERS",
+    "PVD_NUM_RBF",
+    "PVD_PRETRAIN_NOISE_SCALE",
+]

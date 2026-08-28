@@ -39,6 +39,7 @@ from .neural_fingerprint_2015 import NeuralFingerprint
 from .painn_2021 import PaiNN
 from .potentialnet_2018 import PotentialNet
 from .pretrain_gnns_2020 import PretrainGNNs
+from .pvd_2023 import PVDTorchMDET
 from .resgat_2024 import ResGAT
 from .schnet_2017 import SchNet
 from .spherenet_2022 import SphereNet2022
@@ -266,6 +267,39 @@ def register_builtin_models() -> None:
             benchmark_enabled=False,
             benchmark_order=37,
         )(PaiNN)
+    if "pvd_torchmd_et" not in available_models():
+        register_model(
+            "pvd_torchmd_et",
+            default_parameters=dict(
+                hidden_channels=256,
+                num_layers=8,
+                num_rbf=64,
+                num_heads=8,
+                cutoff_lower=0.0,
+                cutoff_upper=5.0,
+                max_atomic_number=99,
+                max_num_neighbors=32,
+                trainable_rbf=False,
+                neighbor_embedding=True,
+                distance_influence="both",
+                vector_layer_norm="whitened",
+                readout="sum",
+                pretrained_variant="none",
+                pretrained_checkpoint=None,
+            ),
+            required_batch_fields=PVDTorchMDET.required_batch_fields,
+            graph_transform_name="pvd_inputs",
+            transform_output_fields=(
+                "atomic_number",
+                "pos",
+                "pvd_edge_index",
+            ),
+            geometry_requirement="required",
+            geometry_role="pure_3d",
+            prediction_reducer_name="identity",
+            benchmark_enabled=False,
+            benchmark_order=39,
+        )(PVDTorchMDET)
     if "mgcn" not in available_models():
         register_model(
             "mgcn",
