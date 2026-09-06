@@ -1,6 +1,7 @@
 # Private development material
 .agents/
 .codex/
+.codex_tmp/
 .python-version
 # Internal design, audit, and planning material stays in the local workspace.
 docs/*

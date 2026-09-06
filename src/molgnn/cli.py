@@ -157,6 +157,8 @@ def _benchmark(args: argparse.Namespace) -> int:
             f"{failure.error_type}: {failure.error_message}",
             file=sys.stderr,
         )
+    if result.aggregate_path is not None:
+        print(f"Aggregate: {result.aggregate_path}")
     return 1 if result.failed else 0
 
 

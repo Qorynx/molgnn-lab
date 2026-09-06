@@ -7,8 +7,9 @@ from pathlib import Path
 
 import yaml
 
-import molgnn.runner as runner
+from molgnn import runner
 from molgnn.cli import main
+from molgnn.config import load_config
 
 
 def _write(path: Path, content: str) -> Path:
@@ -161,7 +162,38 @@ def fit(model, loaders, task_adapter, training, *, device, target_names, on_epoc
         == "completed"
     )
     assert (run_dir / "best.ckpt").is_file()
+    run_results = json.loads((run_dir / "run_results.json").read_text(encoding="utf-8"))
+    assert run_results["schema_version"] == 1
+    assert run_results["split"]
+    assert run_results["training"]["epochs"]
+    first_epoch = run_results["training"]["epochs"][0]
+    assert set(first_epoch) == {"epoch", "loss", "metrics"}
+    assert first_epoch["loss"]
+    assert first_epoch["metrics"]
+    assert not (run_dir / "split.csv").exists()
+    assert not (run_dir / "loss_history.csv").exists()
+    assert not (run_dir / "metrics_history.csv").exists()
     assert (run_dir / "test_predictions.csv").is_file()
+    aggregate = json.loads(
+        (tmp_path / "file_hooks" / "aggregate_metrics.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert aggregate["schema_version"] == 1
+    assert aggregate["artifact_type"] == "evaluation_aggregate"
+    assert aggregate["status"] == "completed"
+    assert aggregate["protocol"]["aggregation_unit"] == "independent_seed_run"
+    assert aggregate["protocol"]["epoch_values_aggregated"] is False
+    assert aggregate["protocol"]["standard_deviation"] == {
+        "ddof": 1,
+        "minimum_run_count": 2,
+        "type": "sample",
+        "value_when_undefined": None,
+    }
+    model_aggregate = aggregate["models"]["gcn_baseline"]
+    assert model_aggregate["completed_run_count"] == 1
+    assert model_aggregate["checkpoint_selection"]["artifact"] == "best.ckpt"
+    assert all(metric["std"] is None for metric in model_aggregate["metrics"].values())
     resolved = yaml.safe_load((run_dir / "config.yaml").read_text(encoding="utf-8"))
     assert resolved["runtime_hooks"] == {
         "featurizer": featurizer_spec,
@@ -193,3 +225,43 @@ def test_train_without_hooks_keeps_default_runtime_metadata(
     assert resolved["data"]["source"] == "csv_smiles"
     assert resolved["dataset_source"] == "csv_smiles"
     assert loaded_sources == ["csv_smiles"]
+
+
+def test_paper_style_aggregate_uses_sample_std_across_seed_runs(
+    tmp_path: Path,
+) -> None:
+    config = load_config(_write_config(tmp_path, name="aggregate_unit"))
+    rows = [
+        {
+            "seed": seed,
+            "split_seed": seed,
+            "status": "completed",
+            "checkpoint_epoch": 4,
+            "sample_count": 10,
+            "rmse": value,
+        }
+        for seed, value in ((1, 1.0), (2, 2.0), (3, 3.0))
+    ]
+
+    aggregate = runner._aggregate_experiment_metrics(
+        config,
+        ("gcn_baseline",),
+        {"gcn_baseline": rows},
+        (),
+        {"gcn_baseline": config.training},
+        configured_seeds=(1, 2, 3),
+    )
+
+    rmse = aggregate["models"]["gcn_baseline"]["metrics"]["rmse"]
+    assert rmse == {
+        "count": 3,
+        "mean": 2.0,
+        "std": 1.0,
+        "min": 1.0,
+        "max": 3.0,
+        "values_by_run": [
+            {"seed": 1, "split_seed": 1, "value": 1.0},
+            {"seed": 2, "split_seed": 2, "value": 2.0},
+            {"seed": 3, "split_seed": 3, "value": 3.0},
+        ],
+    }

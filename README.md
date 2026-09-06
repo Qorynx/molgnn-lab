@@ -71,6 +71,12 @@ molgnn train --config configs/example.yaml
 
 Results are written to `runs/example_gcn_regression/`. The folder contains the
 resolved config, checkpoints, training history, metrics, and test predictions.
+For each seed, `run_results.json` stores the dataset split and one nested
+loss/metrics object per completed epoch. Test history and predictions remain
+separate CSV artifacts. After every configured seed finishes,
+`aggregate_metrics.json` reports final test metrics from each best-validation
+checkpoint as mean and sample standard deviation (`ddof=1`). A single completed
+run has `std: null` because its run-to-run variation cannot be estimated.
 
 To run another experiment, copy an existing file from `configs/` and change the
 dataset, model, and training settings. The main fields are:
@@ -118,7 +124,9 @@ molgnn benchmark --config configs/esol_all_models_3seeds_50epochs.yaml
 
 Each model and seed gets its own output directory. Models with special data
 requirements are skipped by the default benchmark unless they are selected
-explicitly.
+explicitly. The benchmark root contains one nested `aggregate_metrics.json`
+covering every selected model. It is marked `partial` and records failures when
+not all configured model/seed runs complete.
 
 ## Common commands
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import gc
+import json
 import math
 import random
 import time
@@ -17,7 +18,11 @@ import torch
 from torch import Tensor
 from torch_geometric.loader import DataLoader as PyGDataLoader
 
-from .artifacts import RunPaths
+from .artifacts import (
+    AGGREGATE_METRICS_SCHEMA_VERSION,
+    RunPaths,
+    write_json_atomic,
+)
 from .checkpointing import restore_model, save_checkpoint_atomic
 from .config import (
     ModelConfig,
@@ -81,12 +86,13 @@ class RunFailure:
 
 @dataclass(frozen=True)
 class BenchmarkResult:
-    """Phase-2 benchmark outcome; root summaries are added in Phase 3."""
+    """Benchmark outcome and its experiment-level aggregate artifact."""
 
     completed: tuple[Path, ...]
     failed: tuple[RunFailure, ...]
     summary_path: Path | None = None
     leaderboard_path: Path | None = None
+    aggregate_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -140,6 +146,12 @@ def run_benchmark(
 
     plans: list[_ResolvedModelPlan] = []
     failures: list[RunFailure] = []
+    model_rows: dict[str, list[dict[str, object]]] = {
+        spec.name: [] for spec in specs
+    }
+    model_training: dict[str, TrainingConfig] = {
+        spec.name: config.training for spec in specs
+    }
     for spec in specs:
         try:
             plan = _resolve_model_plan(config, spec, shared.context)
@@ -154,6 +166,7 @@ def run_benchmark(
             )
             continue
         plans.append(plan)
+        model_training[spec.name] = plan.training
 
     completed: list[Path] = []
     benchmark_root = config.experiment.output_dir / config.experiment.name
@@ -203,17 +216,37 @@ def run_benchmark(
                         seed_split,
                         paths,
                     )
+                    summary_row = _summary_row(
+                        run_dir,
+                        seed,
+                        seed_split.split_seed,
+                    )
                 except Exception as exc:
                     failures.append(_run_failure(plan.spec.name, seed, "run", exc))
                 else:
                     completed.append(run_dir)
+                    model_rows[plan.spec.name].append(summary_row)
                 finally:
                     _cleanup_resources(plan.training.device)
         finally:
             del prepared
             _cleanup_resources(plan.training.device)
 
-    return BenchmarkResult(completed=tuple(completed), failed=tuple(failures))
+    aggregate_path = write_json_atomic(
+        benchmark_root / "aggregate_metrics.json",
+        _aggregate_experiment_metrics(
+            config,
+            tuple(spec.name for spec in specs),
+            model_rows,
+            tuple(_run_failure_mapping(item) for item in failures),
+            model_training,
+        ),
+    )
+    return BenchmarkResult(
+        completed=tuple(completed),
+        failed=tuple(failures),
+        aggregate_path=aggregate_path,
+    )
 
 
 def run_experiment(config: ResolvedConfig) -> Path:
@@ -332,7 +365,17 @@ def _run_legacy_experiments(
         )
         root_paths.write_summary(summary_rows)
         root_paths.write_aggregate_metrics(
-            _aggregate_metrics(tuple(seeds), summary_rows, failed_rows)
+            _aggregate_experiment_metrics(
+                config,
+                (spec.name,),
+                {spec.name: summary_rows},
+                tuple(
+                    {"model": spec.name, "stage": "run", **item}
+                    for item in failed_rows
+                ),
+                {spec.name: plan.training},
+                configured_seeds=tuple(seeds),
+            )
         )
     if failed_rows:
         failed_seeds = ", ".join(str(item["seed"]) for item in failed_rows)
@@ -658,8 +701,7 @@ def _run_model_seed(
         started = time.perf_counter()
 
         def on_epoch(record: EpochRecord) -> None:
-            paths.append_loss_history(record)
-            paths.append_metrics_history(
+            paths.append_epoch_history(
                 record,
                 learning_rate=resolved_run.training.learning_rate,
                 epoch_seconds=time.perf_counter() - started,
@@ -890,6 +932,7 @@ def _summary_row(
         "seed": seed,
         "split_seed": split_seed,
         "status": "completed",
+        "epochs_completed": _completed_epoch_count(path),
     }
     for key, value in row.items():
         if key in {"checkpoint_epoch", "sample_count"}:
@@ -902,10 +945,25 @@ def _summary_row(
     return summary
 
 
+def _completed_epoch_count(path: Path) -> int | None:
+    run_results_path = path / "run_results.json"
+    if not run_results_path.is_file():
+        return None
+    try:
+        payload = json.loads(run_results_path.read_text(encoding="utf-8"))
+        training = payload["training"]
+        epochs = training["epochs"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise RunnerError(f"could not read epoch history from '{run_results_path}'") from exc
+    if not isinstance(epochs, list):
+        raise RunnerError(f"epoch history must be a list in '{run_results_path}'")
+    return len(epochs)
+
+
 def _aggregate_metrics(
     seeds: tuple[int, ...],
-    rows: list[dict[str, object]],
-    failed: list[dict[str, object]],
+    rows: Sequence[Mapping[str, object]],
+    failed: Sequence[Mapping[str, object]],
 ) -> dict[str, object]:
     completed = [row for row in rows if row.get("status") == "completed"]
     metric_names = sorted(
@@ -914,33 +972,143 @@ def _aggregate_metrics(
             for row in completed
             for key, value in row.items()
             if key
-            not in {"seed", "split_seed", "status", "checkpoint_epoch", "sample_count"}
+            not in {
+                "seed",
+                "split_seed",
+                "status",
+                "epochs_completed",
+                "checkpoint_epoch",
+                "sample_count",
+            }
             and isinstance(value, (int, float))
             and math.isfinite(float(value))
         }
     )
     metrics: dict[str, object] = {}
     for name in metric_names:
-        values = [
-            float(str(row[name]))
+        values_by_run = [
+            {
+                "seed": row["seed"],
+                "split_seed": row.get("split_seed"),
+                "value": float(str(row[name])),
+            }
             for row in completed
             if name in row and math.isfinite(float(str(row[name])))
         ]
+        values = [float(item["value"]) for item in values_by_run]
         mean = sum(values) / len(values)
-        variance = sum((value - mean) ** 2 for value in values) / len(values)
+        std = None
+        if len(values) >= 2:
+            variance = sum((value - mean) ** 2 for value in values) / (
+                len(values) - 1
+            )
+            std = math.sqrt(variance)
         metrics[name] = {
+            "count": len(values),
             "mean": mean,
-            "std": math.sqrt(variance),
+            "std": std,
             "min": min(values),
             "max": max(values),
-            "values": values,
+            "values_by_run": values_by_run,
         }
+    runs = []
+    for row in completed:
+        run_metrics = {
+            name: float(str(row[name]))
+            for name in metric_names
+            if name in row and math.isfinite(float(str(row[name])))
+        }
+        runs.append(
+            {
+                "seed": row["seed"],
+                "split_seed": row.get("split_seed"),
+                "epochs_completed": row.get("epochs_completed"),
+                "checkpoint_epoch": row.get("checkpoint_epoch"),
+                "sample_count": row.get("sample_count"),
+                "metrics": run_metrics,
+            }
+        )
+    is_complete = len(completed) == len(seeds) and not failed
     return {
+        "status": "completed" if is_complete else "partial",
+        "configured_run_count": len(seeds),
+        "completed_run_count": len(completed),
+        "failed_run_count": len(failed),
         "configured_seeds": list(seeds),
         "completed_seeds": [row["seed"] for row in completed],
-        "failed_seeds": failed,
-        "valid_seed_count": len(completed),
+        "runs": runs,
         "metrics": metrics,
+        "failures": list(failed),
+    }
+
+
+def _aggregate_experiment_metrics(
+    config: ResolvedConfig,
+    model_names: tuple[str, ...],
+    model_rows: Mapping[str, Sequence[Mapping[str, object]]],
+    failures: Sequence[Mapping[str, object]],
+    model_training: Mapping[str, TrainingConfig],
+    *,
+    configured_seeds: tuple[int, ...] | None = None,
+) -> dict[str, object]:
+    """Build one paper-style aggregate over independent model/seed runs."""
+    seeds = configured_seeds or config.experiment.seeds
+    models: dict[str, object] = {}
+    for model_name in model_names:
+        model_failures = [
+            item for item in failures if item.get("model") == model_name
+        ]
+        training = model_training[model_name]
+        models[model_name] = {
+            "training_epochs_configured": training.epochs,
+            "checkpoint_selection": {
+                "artifact": "best.ckpt",
+                "monitor": training.monitor,
+                "mode": training.monitor_mode,
+            },
+            **_aggregate_metrics(
+                seeds,
+                model_rows.get(model_name, ()),
+                model_failures,
+            ),
+        }
+    is_complete = all(
+        isinstance(model, Mapping) and model.get("status") == "completed"
+        for model in models.values()
+    )
+    return {
+        "schema_version": AGGREGATE_METRICS_SCHEMA_VERSION,
+        "artifact_type": "evaluation_aggregate",
+        "status": "completed" if is_complete else "partial",
+        "protocol": {
+            "aggregation_unit": "independent_seed_run",
+            "epoch_values_aggregated": False,
+            "evaluated_split": "test",
+            "split_method": config.data.split,
+            "split_seed_mode": config.data.split_seed_mode,
+            "task_type": config.task.type,
+            "target_columns": list(config.data.target_columns),
+            "standard_deviation": {
+                "type": "sample",
+                "ddof": 1,
+                "minimum_run_count": 2,
+                "value_when_undefined": None,
+            },
+        },
+        "configured_models": list(model_names),
+        "configured_seeds": list(seeds),
+        "models": models,
+        "failures": list(failures),
+    }
+
+
+def _run_failure_mapping(failure: RunFailure) -> dict[str, object]:
+    return {
+        "model": failure.model_name,
+        "seed": failure.seed,
+        "stage": failure.stage,
+        "error_type": failure.error_type,
+        "error_message": failure.error_message,
     }
 
 
